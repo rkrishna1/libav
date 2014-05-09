@@ -75,6 +75,8 @@ Depends:
  ${shlibs:Depends}
 Conflicts:
  ffprobe
+Replaces:
+ ffmpeg
 Description: Multimedia player, server, encoder and transcoder
  Libav is a complete, cross-platform solution to decode, encode, record,
  convert and stream audio and video.
