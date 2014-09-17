@@ -845,6 +845,7 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
     av_opt_get_int(o->g->sws_opts, "sws_flags", 0, &ost->sws_flags);
 
     ost->pix_fmts[0] = ost->pix_fmts[1] = AV_PIX_FMT_NONE;
+    ost->last_mux_dts = AV_NOPTS_VALUE;
 
     return ost;
 }
@@ -1519,7 +1520,8 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
             for (j = 0; j < nb_input_files; j++) {
                 for (i = 0; i < input_files[j]->nb_streams; i++) {
                     AVCodecContext *c = input_files[j]->ctx->streams[i]->codec;
-                    if (c->codec_type != AVMEDIA_TYPE_VIDEO)
+                    if (c->codec_type != AVMEDIA_TYPE_VIDEO ||
+                        !c->time_base.num)
                         continue;
                     fr = c->time_base.den * 1000 / c->time_base.num;
                     if (fr == 25000) {
@@ -1564,7 +1566,7 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         parse_option(o, "ac", "2", options);
 
         opt_default(NULL, "packetsize", "2324");
-        opt_default(NULL, "muxrate", "1411200"); // 2352 * 75 * 8;
+        opt_default(NULL, "muxrate", "3528"); // 2352 * 75 / 50;
 
         /* We have to offset the PTS, so that it is consistent with the SCR.
            SCR starts at 36000, but the first two packs contain only padding
@@ -1610,7 +1612,7 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         opt_default(NULL, "bufsize", "1835008"); // 224*1024*8;
 
         opt_default(NULL, "packetsize", "2048");  // from www.mpucoder.com: DVD sectors contain 2048 bytes of data, this is also the size of one pack.
-        opt_default(NULL, "muxrate", "10080000"); // from mplex project: data_rate = 1260000. mux_rate = data_rate * 8
+        opt_default(NULL, "muxrate", "25200"); // from mplex project: data_rate = 1260000. mux_rate = data_rate / 50
 
         opt_default(NULL, "b:a", "448000");
         parse_option(o, "ar", "48000", options);
@@ -1631,6 +1633,10 @@ static int opt_target(void *optctx, const char *opt, const char *arg)
         av_log(NULL, AV_LOG_ERROR, "Unknown target: %s\n", arg);
         return AVERROR(EINVAL);
     }
+
+    av_dict_copy(&o->g->codec_opts,  codec_opts, 0);
+    av_dict_copy(&o->g->format_opts, format_opts, 0);
+
     return 0;
 }
 

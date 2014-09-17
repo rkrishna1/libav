@@ -122,6 +122,10 @@ static const AVClass mpegts_muxer_class = {
     .version        = LIBAVUTIL_VERSION_INT,
 };
 
+/* The section length is 12 bits. The first 2 are set to 0, the remaining
+ * 10 bits should not exceed 1021. */
+#define SECTION_LENGTH 1020
+
 /* NOTE: 4 bytes must be left at the end for the crc32 */
 static void mpegts_write_section(MpegTSSection *s, uint8_t *buf, int len)
 {
@@ -233,7 +237,7 @@ static void mpegts_write_pat(AVFormatContext *s)
 {
     MpegTSWrite *ts = s->priv_data;
     MpegTSService *service;
-    uint8_t data[1012], *q;
+    uint8_t data[SECTION_LENGTH], *q;
     int i;
 
     q = data;
@@ -249,8 +253,8 @@ static void mpegts_write_pat(AVFormatContext *s)
 static void mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
 {
     MpegTSWrite *ts = s->priv_data;
-    uint8_t data[1012], *q, *desc_length_ptr, *program_info_length_ptr;
-    int val, stream_type, i;
+    uint8_t data[SECTION_LENGTH], *q, *desc_length_ptr, *program_info_length_ptr;
+    int val, stream_type, i, err = 0;
 
     q = data;
     put16(&q, 0xe000 | service->pcr_pid);
@@ -268,6 +272,11 @@ static void mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
         AVStream *st = s->streams[i];
         MpegTSWriteStream *ts_st = st->priv_data;
         AVDictionaryEntry *lang = av_dict_get(st->metadata, "language", NULL,0);
+
+        if (q - data > SECTION_LENGTH - 3 - 2 - 6) {
+            err = 1;
+            break;
+        }
         switch(st->codec->codec_id) {
         case AV_CODEC_ID_MPEG1VIDEO:
         case AV_CODEC_ID_MPEG2VIDEO:
@@ -317,6 +326,10 @@ static void mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
                 *len_ptr = 0;
 
                 for (p = lang->value; next && *len_ptr < 255 / 4 * 4; p = next + 1) {
+                    if (q - data > SECTION_LENGTH - 4) {
+                        err = 1;
+                        break;
+                    }
                     next = strchr(p, ',');
                     if (strlen(p) != 3 && (!next || next != p + 3))
                         continue; /* not a 3-letter code */
@@ -351,6 +364,11 @@ static void mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
                 *q++ = language[1];
                 *q++ = language[2];
                 *q++ = 0x10; /* normal subtitles (0x20 = if hearing pb) */
+
+                if (q - data > SECTION_LENGTH - 4) {
+                    err = 1;
+                    break;
+                }
                 if(st->codec->extradata_size == 4) {
                     memcpy(q, st->codec->extradata, 4);
                     q += 4;
@@ -376,6 +394,14 @@ static void mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
         desc_length_ptr[0] = val >> 8;
         desc_length_ptr[1] = val;
     }
+
+    if (err)
+        av_log(s, AV_LOG_ERROR,
+               "The PMT section is too small for stream %d and following.\n"
+               "Try reducing the number of languages in the audio streams "
+               "or the total number of streams.\n",
+               i);
+
     mpegts_write_section1(&service->pmt, PMT_TID, service->sid, 0, 0, 0,
                           data, q - data);
 }
@@ -401,7 +427,7 @@ static void mpegts_write_sdt(AVFormatContext *s)
 {
     MpegTSWrite *ts = s->priv_data;
     MpegTSService *service;
-    uint8_t data[1012], *q, *desc_list_len_ptr, *desc_len_ptr;
+    uint8_t data[SECTION_LENGTH], *q, *desc_list_len_ptr, *desc_len_ptr;
     int i, running_status, free_ca_mode, val;
 
     q = data;
