@@ -84,6 +84,7 @@ typedef struct MP3Context {
     ID3v2EncContext id3;
     int id3v2_version;
     int write_id3v1;
+    int write_xing;
 
     /* xing header */
     int64_t xing_offset;
@@ -124,7 +125,7 @@ static void mp3_write_xing(AVFormatContext *s)
     int ver = 0;
     int lsf, bytes_needed;
 
-    if (!s->pb->seekable)
+    if (!s->pb->seekable || !mp3->write_xing)
         return;
 
     for (i = 0; i < FF_ARRAY_ELEMS(avpriv_mpa_freq_tab); i++) {
@@ -262,7 +263,8 @@ static int mp3_write_audio_packet(AVFormatContext *s, AVPacket *pkt)
                 mp3->has_variable_bitrate = 1;
         }
 
-        mp3_xing_add_frame(mp3, pkt);
+        if(mp3->write_xing)
+        	mp3_xing_add_frame(mp3, pkt);
     }
 
     return ff_raw_write_packet(s, pkt);
@@ -330,7 +332,7 @@ static int mp3_write_trailer(struct AVFormatContext *s)
         avio_write(s->pb, buf, ID3v1_TAG_SIZE);
     }
 
-    if (mp3->xing_offset)
+    if (mp3->xing_offset && mp3->write_xing)
         mp3_update_xing(s);
 
     return 0;
@@ -356,6 +358,8 @@ static const AVOption options[] = {
       offsetof(MP3Context, id3v2_version), AV_OPT_TYPE_INT, {.i64 = 4}, 3, 4, AV_OPT_FLAG_ENCODING_PARAM},
     { "write_id3v1", "Enable ID3v1 writing. ID3v1 tags are written in UTF-8 which may not be supported by most software.",
       offsetof(MP3Context, write_id3v1), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
+    { "write_xing",  "Write the Xing header containing file duration.",
+       offsetof(MP3Context, write_xing),  AV_OPT_TYPE_INT, {.i64 = 1}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
     { NULL },
 };
 
@@ -449,8 +453,8 @@ static int mp3_write_header(struct AVFormatContext *s)
         return ret;
 
     if (!mp3->pics_to_write) {
-        ff_id3v2_finish(&mp3->id3, s->pb);
-        mp3_write_xing(s);
+    	ff_id3v2_finish(&mp3->id3, s->pb);
+    	mp3_write_xing(s);
     }
 
     return 0;
