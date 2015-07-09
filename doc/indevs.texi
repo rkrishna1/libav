@@ -271,6 +271,9 @@ supported using @command{-list_formats all} for Video4Linux2 devices.
 Some usage examples of the video4linux2 devices with avconv and avplay:
 
 @example
+# List supported formats for a video4linux2 device.
+avplay -f video4linux2 -list_formats all /dev/video0
+
 # Grab and show the input of a video4linux2 device.
 avplay -f video4linux2 -framerate 30 -video_size hd720 /dev/video0
 
@@ -358,5 +361,15 @@ avconv -f x11grab -show_region 1 -r 25 -s cif -i :0.0+10,20 out.mpg
 # With follow_mouse
 avconv -f x11grab -follow_mouse centered -show_region 1  -r 25 -s cif -i :0.0 out.mpg
 @end example
+
+@subsection @var{grab_x} @var{grab_y} AVOption
+
+The syntax is:
+@example
+-grab_x @var{x_offset} -grab_y @var{y_offset}
+@end example
+
+Set the grabing region coordinates. The are expressed as offset from the top left
+corner of the X11 window. The default value is 0.
 
 @c man end INPUT DEVICES

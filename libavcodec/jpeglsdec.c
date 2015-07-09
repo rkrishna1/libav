@@ -28,6 +28,7 @@
 #include "avcodec.h"
 #include "get_bits.h"
 #include "golomb.h"
+#include "internal.h"
 #include "mathops.h"
 #include "mjpeg.h"
 #include "mjpegdec.h"
@@ -76,7 +77,7 @@ int ff_jpegls_decode_lse(MJpegDecodeContext *s)
         av_log(s->avctx, AV_LOG_ERROR, "invalid id %d\n", id);
         return AVERROR_INVALIDDATA;
     }
-    av_dlog(s->avctx, "ID=%i, T=%i,%i,%i\n", id, s->t1, s->t2, s->t3);
+    ff_dlog(s->avctx, "ID=%i, T=%i,%i,%i\n", id, s->t1, s->t2, s->t3);
 
     return 0;
 }
@@ -277,10 +278,16 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s, int near,
     int off = 0, stride = 1, width, shift, ret = 0;
 
     zero = av_mallocz(s->picture_ptr->linesize[0]);
+    if (!zero)
+        return AVERROR(ENOMEM);
     last = zero;
     cur  = s->picture_ptr->data[0];
 
     state = av_mallocz(sizeof(JLSState));
+    if (!state) {
+        av_free(zero);
+        return AVERROR(ENOMEM);
+    }
     /* initialize JPEG-LS state from JPEG parameters */
     state->near   = near;
     state->bpp    = (s->bits < 2) ? 2 : s->bits;
@@ -297,13 +304,13 @@ int ff_jpegls_decode_picture(MJpegDecodeContext *s, int near,
     else
         shift = point_transform + (16 - s->bits);
 
-    av_dlog(s->avctx,
+    ff_dlog(s->avctx,
             "JPEG-LS params: %ix%i NEAR=%i MV=%i T(%i,%i,%i) "
             "RESET=%i, LIMIT=%i, qbpp=%i, RANGE=%i\n",
             s->width, s->height, state->near, state->maxval,
             state->T1, state->T2, state->T3,
             state->reset, state->limit, state->qbpp, state->range);
-    av_dlog(s->avctx, "JPEG params: ILV=%i Pt=%i BPP=%i, scan = %i\n",
+    ff_dlog(s->avctx, "JPEG params: ILV=%i Pt=%i BPP=%i, scan = %i\n",
             ilv, point_transform, s->bits, s->cur_scan);
     if (ilv == 0) { /* separate planes */
         if (s->cur_scan > s->nb_components) {
@@ -396,4 +403,5 @@ AVCodec ff_jpegls_decoder = {
     .close          = ff_mjpeg_decode_end,
     .decode         = ff_mjpeg_decode_frame,
     .capabilities   = CODEC_CAP_DR1,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

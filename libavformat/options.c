@@ -20,6 +20,8 @@
 #include "avformat.h"
 #include "avio_internal.h"
 #include "internal.h"
+
+#include "libavutil/internal.h"
 #include "libavutil/opt.h"
 
 /**
@@ -27,7 +29,9 @@
  * Options definition for AVFormatContext.
  */
 
+FF_DISABLE_DEPRECATION_WARNINGS
 #include "options_table.h"
+FF_ENABLE_DEPRECATION_WARNINGS
 
 static const char* format_to_name(void* ptr)
 {
@@ -55,7 +59,7 @@ static const AVClass *format_child_class_next(const AVClass *prev)
     AVOutputFormat *ofmt = NULL;
 
     if (!prev)
-        return &ffio_url_class;
+        return &ff_avio_class;
 
     while ((ifmt = av_iformat_next(ifmt)))
         if (ifmt->priv_class == prev)

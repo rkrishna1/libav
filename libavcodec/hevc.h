@@ -284,10 +284,10 @@ typedef struct RefPicListTab {
 } RefPicListTab;
 
 typedef struct HEVCWindow {
-    int left_offset;
-    int right_offset;
-    int top_offset;
-    int bottom_offset;
+    unsigned int left_offset;
+    unsigned int right_offset;
+    unsigned int top_offset;
+    unsigned int bottom_offset;
 } HEVCWindow;
 
 typedef struct VUI {
@@ -863,8 +863,21 @@ typedef struct HEVCContext {
     int sei_hflip, sei_vflip;
 } HEVCContext;
 
-int ff_hevc_decode_short_term_rps(HEVCContext *s, ShortTermRPS *rps,
-                                  const HEVCSPS *sps, int is_slice_header);
+int ff_hevc_decode_short_term_rps(GetBitContext *gb, AVCodecContext *avctx,
+                                  ShortTermRPS *rps, const HEVCSPS *sps, int is_slice_header);
+
+/**
+ * Parse the SPS from the bitstream into the provided HEVCSPS struct.
+ *
+ * @param sps_id the SPS id will be written here
+ * @param apply_defdispwin if set 1, the default display window from the VUI
+ *                         will be applied to the video dimensions
+ * @param vps_list if non-NULL, this function will validate that the SPS refers
+ *                 to an existing VPS
+ */
+int ff_hevc_parse_sps(HEVCSPS *sps, GetBitContext *gb, unsigned int *sps_id,
+                      int apply_defdispwin, AVBufferRef **vps_list, AVCodecContext *avctx);
+
 int ff_hevc_decode_nal_vps(HEVCContext *s);
 int ff_hevc_decode_nal_sps(HEVCContext *s);
 int ff_hevc_decode_nal_pps(HEVCContext *s);
@@ -988,6 +1001,15 @@ void ff_hevc_hls_filters(HEVCContext *s, int x_ctb, int y_ctb, int ctb_size);
 void ff_hevc_pps_free(HEVCPPS **ppps);
 
 void ff_hevc_pred_init(HEVCPredContext *hpc, int bit_depth);
+
+/**
+ * Extract the raw (unescaped) HEVC bitstream.
+ */
+int ff_hevc_extract_rbsp(const uint8_t *src, int length,
+                         HEVCNAL *nal);
+
+int ff_hevc_encode_nal_vps(HEVCVPS *vps, unsigned int id,
+                           uint8_t *buf, int buf_size);
 
 extern const uint8_t ff_hevc_qpel_extra_before[4];
 extern const uint8_t ff_hevc_qpel_extra_after[4];

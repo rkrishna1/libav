@@ -30,6 +30,7 @@
 #include "huffyuv.h"
 #include "huffman.h"
 #include "huffyuvencdsp.h"
+#include "internal.h"
 #include "put_bits.h"
 
 static inline int sub_left_prediction(HYuvContext *s, uint8_t *dst,
@@ -154,7 +155,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
     s->version = 2;
 
     avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame)
+    if (!avctx->extradata || !avctx->stats_out || !avctx->coded_frame)
         return AVERROR(ENOMEM);
 
     avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
@@ -697,6 +698,8 @@ AVCodec ff_huffyuv_encoder = {
         AV_PIX_FMT_YUV422P, AV_PIX_FMT_RGB24,
         AV_PIX_FMT_RGB32, AV_PIX_FMT_NONE
     },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
 };
 
 #if CONFIG_FFVHUFF_ENCODER
@@ -713,5 +716,7 @@ AVCodec ff_ffvhuff_encoder = {
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_RGB24,
         AV_PIX_FMT_RGB32, AV_PIX_FMT_NONE
     },
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
 };
 #endif

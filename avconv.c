@@ -318,7 +318,7 @@ static void update_sample_fmt(AVCodecContext *dec, AVCodec *dec_codec,
 static void write_frame(AVFormatContext *s, AVPacket *pkt, OutputStream *ost)
 {
     AVBitStreamFilterContext *bsfc = ost->bitstream_filters;
-    AVCodecContext          *avctx = ost->enc_ctx;
+    AVCodecContext          *avctx = ost->encoding_needed ? ost->enc_ctx : ost->st->codec;
     int ret;
 
     /*
@@ -1161,13 +1161,8 @@ static int decode_audio(InputStream *ist, AVPacket *pkt, int *got_output)
     decoded_frame = ist->decoded_frame;
 
     ret = avcodec_decode_audio4(avctx, decoded_frame, got_output, pkt);
-    if (!*got_output || ret < 0) {
-        if (!pkt->size) {
-            for (i = 0; i < ist->nb_filters; i++)
-                av_buffersrc_add_frame(ist->filters[i]->filter, NULL);
-        }
+    if (!*got_output || ret < 0)
         return ret;
-    }
 
     ist->samples_decoded += decoded_frame->nb_samples;
     ist->frames_decoded++;
@@ -1257,13 +1252,8 @@ static int decode_video(InputStream *ist, AVPacket *pkt, int *got_output)
 
     ret = avcodec_decode_video2(ist->dec_ctx,
                                 decoded_frame, got_output, pkt);
-    if (!*got_output || ret < 0) {
-        if (!pkt->size) {
-            for (i = 0; i < ist->nb_filters; i++)
-                av_buffersrc_add_frame(ist->filters[i]->filter, NULL);
-        }
+    if (!*got_output || ret < 0)
         return ret;
-    }
 
     ist->frames_decoded++;
 
@@ -1292,8 +1282,12 @@ static int decode_video(InputStream *ist, AVPacket *pkt, int *got_output)
                decoded_frame->width, decoded_frame->height, av_get_pix_fmt_name(decoded_frame->format));
 
         ret = poll_filters();
-        if (ret < 0 && (ret != AVERROR_EOF && ret != AVERROR(EAGAIN)))
-            av_log(NULL, AV_LOG_ERROR, "Error while filtering.\n");
+        if (ret < 0 && (ret != AVERROR_EOF && ret != AVERROR(EAGAIN))) {
+            char errbuf[128];
+            av_strerror(ret, errbuf, sizeof(errbuf));
+
+            av_log(NULL, AV_LOG_ERROR, "Error while filtering: %s\n", errbuf);
+        }
 
         ist->resample_width   = decoded_frame->width;
         ist->resample_height  = decoded_frame->height;
@@ -1352,8 +1346,19 @@ static int transcode_subtitles(InputStream *ist, AVPacket *pkt, int *got_output)
     return ret;
 }
 
+static int send_filter_eof(InputStream *ist)
+{
+    int i, ret;
+    for (i = 0; i < ist->nb_filters; i++) {
+        ret = av_buffersrc_add_frame(ist->filters[i]->filter, NULL);
+        if (ret < 0)
+            return ret;
+    }
+    return 0;
+}
+
 /* pkt = NULL means EOF (needed to flush decoder buffers) */
-static int process_input_packet(InputStream *ist, const AVPacket *pkt)
+static void process_input_packet(InputStream *ist, const AVPacket *pkt)
 {
     int i;
     int got_output;
@@ -1410,11 +1415,17 @@ static int process_input_packet(InputStream *ist, const AVPacket *pkt)
             ret = transcode_subtitles(ist, &avpkt, &got_output);
             break;
         default:
-            return -1;
+            return;
         }
 
-        if (ret < 0)
-            return ret;
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_ERROR, "Error while decoding stream #%d:%d\n",
+                   ist->file_index, ist->st->index);
+            if (exit_on_error)
+                exit_program(1);
+            break;
+        }
+
         // touch data and size only if not EOF
         if (pkt) {
             avpkt.data += ret;
@@ -1422,6 +1433,15 @@ static int process_input_packet(InputStream *ist, const AVPacket *pkt)
         }
         if (!got_output) {
             continue;
+        }
+    }
+
+    /* after flushing, send an EOF on all the filter inputs attached to the stream */
+    if (!pkt && ist->decoding_needed) {
+        int ret = send_filter_eof(ist);
+        if (ret < 0) {
+            av_log(NULL, AV_LOG_FATAL, "Error marking filters as finished\n");
+            exit_program(1);
         }
     }
 
@@ -1452,7 +1472,7 @@ static int process_input_packet(InputStream *ist, const AVPacket *pkt)
         do_streamcopy(ist, ost, pkt);
     }
 
-    return 0;
+    return;
 }
 
 static void print_sdp(void)
@@ -1507,7 +1527,7 @@ static enum AVPixelFormat get_format(AVCodecContext *s, const enum AVPixelFormat
                        "%s hwaccel requested for input stream #%d:%d, "
                        "but cannot be initialized.\n", hwaccel->name,
                        ist->file_index, ist->st->index);
-                exit_program(1);
+                return AV_PIX_FMT_NONE;
             }
             continue;
         }
@@ -1702,7 +1722,7 @@ static int transcode_init(void)
         if (ost->attachment_filename)
             continue;
 
-        enc_ctx = ost->enc_ctx;
+        enc_ctx = ost->stream_copy ? ost->st->codec : ost->enc_ctx;
 
         if (ist) {
             dec_ctx = ist->dec_ctx;
@@ -1981,20 +2001,21 @@ static int transcode_init(void)
             if (ost->enc_ctx->bit_rate && ost->enc_ctx->bit_rate < 1000)
                 av_log(NULL, AV_LOG_WARNING, "The bitrate parameter is set too low."
                                              "It takes bits/s as argument, not kbits/s\n");
+
+            ret = avcodec_copy_context(ost->st->codec, ost->enc_ctx);
+            if (ret < 0) {
+                av_log(NULL, AV_LOG_FATAL,
+                       "Error initializing the output stream codec context.\n");
+                exit_program(1);
+            }
+
+            ost->st->time_base = ost->enc_ctx->time_base;
         } else {
             ret = av_opt_set_dict(ost->enc_ctx, &ost->encoder_opts);
             if (ret < 0)
                 return ret;
+            ost->st->time_base = ost->st->codec->time_base;
         }
-
-        ret = avcodec_copy_context(ost->st->codec, ost->enc_ctx);
-        if (ret < 0) {
-            av_log(NULL, AV_LOG_FATAL,
-                   "Error initializing the output stream codec context.\n");
-            exit_program(1);
-        }
-
-        ost->st->time_base = ost->enc_ctx->time_base;
     }
 
     /* init input streams */
@@ -2101,17 +2122,22 @@ static int transcode_init(void)
             const char *in_codec_name  = "?";
             const char *encoder_name   = "?";
             const char *out_codec_name = "?";
+            const AVCodecDescriptor *desc;
 
             if (in_codec) {
                 decoder_name  = in_codec->name;
-                in_codec_name = avcodec_descriptor_get(in_codec->id)->name;
+                desc = avcodec_descriptor_get(in_codec->id);
+                if (desc)
+                    in_codec_name = desc->name;
                 if (!strcmp(decoder_name, in_codec_name))
                     decoder_name = "native";
             }
 
             if (out_codec) {
                 encoder_name   = out_codec->name;
-                out_codec_name = avcodec_descriptor_get(out_codec->id)->name;
+                desc = avcodec_descriptor_get(out_codec->id);
+                if (desc)
+                    out_codec_name = desc->name;
                 if (!strcmp(encoder_name, out_codec_name))
                     encoder_name = "native";
             }
@@ -2423,6 +2449,8 @@ static int process_input(void)
 
             if (av_packet_get_side_data(&pkt, src_sd->type, NULL))
                 continue;
+            if (ist->autorotate && src_sd->type == AV_PKT_DATA_DISPLAYMATRIX)
+                continue;
 
             dst_data = av_packet_new_side_data(&pkt, src_sd->type, src_sd->size);
             if (!dst_data)
@@ -2459,13 +2487,7 @@ static int process_input(void)
         }
     }
 
-    ret = process_input_packet(ist, &pkt);
-    if (ret < 0) {
-        av_log(NULL, AV_LOG_ERROR, "Error while decoding stream #%d:%d\n",
-               ist->file_index, ist->st->index);
-        if (exit_on_error)
-            exit_program(1);
-    }
+    process_input_packet(ist, &pkt);
 
 discard_packet:
     av_free_packet(&pkt);
@@ -2514,11 +2536,15 @@ static int transcode(void)
 
         ret = poll_filters();
         if (ret < 0) {
-            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN))
+            if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
                 continue;
+            } else {
+                char errbuf[128];
+                av_strerror(ret, errbuf, sizeof(errbuf));
 
-            av_log(NULL, AV_LOG_ERROR, "Error while filtering.\n");
-            break;
+                av_log(NULL, AV_LOG_ERROR, "Error while filtering: %s\n", errbuf);
+                break;
+            }
         }
 
         /* dump report by using the output first video and audio streams */

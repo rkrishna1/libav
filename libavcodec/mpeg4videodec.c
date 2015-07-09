@@ -25,6 +25,7 @@
 #include "internal.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
+#include "mpegvideodata.h"
 #include "mpeg4video.h"
 #include "h263.h"
 #include "thread.h"
@@ -563,7 +564,7 @@ static inline int mpeg4_decode_dc(MpegEncContext *s, int n, int *dir_ptr)
 
         if (code > 8) {
             if (get_bits1(&s->gb) == 0) { /* marker */
-                if (s->err_recognition & AV_EF_BITSTREAM) {
+                if (s->avctx->err_recognition & AV_EF_BITSTREAM) {
                     av_log(s->avctx, AV_LOG_ERROR, "dc marker bit missing\n");
                     return -1;
                 }
@@ -1099,7 +1100,7 @@ static inline int mpeg4_decode_block(Mpeg4DecContext *ctx, int16_t *block,
                                 level = level * qmul - qadd;
 
                             if ((unsigned)(level + 2048) > 4095) {
-                                if (s->err_recognition & AV_EF_BITSTREAM) {
+                                if (s->avctx->err_recognition & AV_EF_BITSTREAM) {
                                     if (level > 2560 || level < -2560) {
                                         av_log(s->avctx, AV_LOG_ERROR,
                                                "|level| overflow in 3. esc, qp=%d\n",
@@ -2078,7 +2079,7 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
 
     s->pict_type = get_bits(gb, 2) + AV_PICTURE_TYPE_I;        /* pict type: I = 0 , P = 1 */
     if (s->pict_type == AV_PICTURE_TYPE_B && s->low_delay &&
-        ctx->vol_control_parameters == 0 && !(s->flags & CODEC_FLAG_LOW_DELAY)) {
+        ctx->vol_control_parameters == 0 && !(s->avctx->flags & CODEC_FLAG_LOW_DELAY)) {
         av_log(s->avctx, AV_LOG_ERROR, "low_delay flag set incorrectly, clearing it\n");
         s->low_delay = 0;
     }
@@ -2097,9 +2098,7 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
 
     if (ctx->time_increment_bits == 0 ||
         !(show_bits(gb, ctx->time_increment_bits + 1) & 1)) {
-        av_log(s->avctx, AV_LOG_ERROR,
-               "hmm, seems the headers are not complete, trying to guess time_increment_bits\n");
-
+        /* Headers seem incomplete; try to guess time_increment_bits. */
         for (ctx->time_increment_bits = 1;
              ctx->time_increment_bits < 16;
              ctx->time_increment_bits++) {
@@ -2111,9 +2110,6 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
             } else if ((show_bits(gb, ctx->time_increment_bits + 5) & 0x1F) == 0x18)
                 break;
         }
-
-        av_log(s->avctx, AV_LOG_ERROR,
-               "my guess is %d bits ;)\n", ctx->time_increment_bits);
     }
 
     if (IS_3IV1)
@@ -2425,7 +2421,7 @@ int ff_mpeg4_decode_picture_header(Mpeg4DecContext *ctx, GetBitContext *gb)
     }
 
 end:
-    if (s->flags & CODEC_FLAG_LOW_DELAY)
+    if (s->avctx->flags & CODEC_FLAG_LOW_DELAY)
         s->low_delay = 1;
     s->avctx->has_b_frames = !s->low_delay;
 
@@ -2572,9 +2568,9 @@ static av_cold int decode_init(AVCodecContext *avctx)
     if (!done) {
         done = 1;
 
-        ff_init_rl(&ff_mpeg4_rl_intra, ff_mpeg4_static_rl_table_store[0]);
-        ff_init_rl(&ff_rvlc_rl_inter, ff_mpeg4_static_rl_table_store[1]);
-        ff_init_rl(&ff_rvlc_rl_intra, ff_mpeg4_static_rl_table_store[2]);
+        ff_rl_init(&ff_mpeg4_rl_intra, ff_mpeg4_static_rl_table_store[0]);
+        ff_rl_init(&ff_rvlc_rl_inter, ff_mpeg4_static_rl_table_store[1]);
+        ff_rl_init(&ff_rvlc_rl_intra, ff_mpeg4_static_rl_table_store[2]);
         INIT_VLC_RL(ff_mpeg4_rl_intra, 554);
         INIT_VLC_RL(ff_rvlc_rl_inter, 1072);
         INIT_VLC_RL(ff_rvlc_rl_intra, 1072);

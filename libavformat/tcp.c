@@ -43,8 +43,8 @@ typedef struct TCPContext {
 #define E AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
     { "listen",          "Listen for incoming connections",  OFFSET(listen),         AV_OPT_TYPE_INT, { .i64 = 0 },     0,       1,       .flags = D|E },
-    { "timeout",         "Connection timeout",               OFFSET(timeout),        AV_OPT_TYPE_INT, { .i64 = 10000 }, INT_MIN, INT_MAX, .flags = D|E },
-    { "listen_timeout",  "Bind timeout",                     OFFSET(listen_timeout), AV_OPT_TYPE_INT, { .i64 = -1 },    INT_MIN, INT_MAX, .flags = D|E },
+    { "timeout",         "Connection timeout (in milliseconds)", OFFSET(timeout),    AV_OPT_TYPE_INT, { .i64 = 10000 }, INT_MIN, INT_MAX, .flags = D|E },
+    { "listen_timeout",  "Bind timeout (in milliseconds)",   OFFSET(listen_timeout), AV_OPT_TYPE_INT, { .i64 = -1 },    INT_MIN, INT_MAX, .flags = D|E },
     { NULL }
 };
 
@@ -114,11 +114,11 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
     }
 
     if (s->listen) {
-        if ((fd = ff_listen_bind(fd, cur_ai->ai_addr, cur_ai->ai_addrlen,
-                                 s->listen_timeout, h)) < 0) {
-            ret = fd;
+        if ((ret = ff_listen_bind(fd, cur_ai->ai_addr, cur_ai->ai_addrlen,
+                                  s->listen_timeout, h)) < 0) {
             goto fail1;
         }
+        fd = ret;
     } else {
         if ((ret = ff_listen_connect(fd, cur_ai->ai_addr, cur_ai->ai_addrlen,
                                      s->timeout, h, !!cur_ai->ai_next)) < 0) {

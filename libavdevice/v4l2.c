@@ -111,6 +111,9 @@ static struct fmt_map fmt_conversion_table[] = {
     { AV_PIX_FMT_NV12,    AV_CODEC_ID_RAWVIDEO, V4L2_PIX_FMT_NV12    },
     { AV_PIX_FMT_NONE,    AV_CODEC_ID_MJPEG,    V4L2_PIX_FMT_MJPEG   },
     { AV_PIX_FMT_NONE,    AV_CODEC_ID_MJPEG,    V4L2_PIX_FMT_JPEG    },
+#ifdef V4L2_PIX_FMT_H264
+    { AV_PIX_FMT_NONE,    AV_CODEC_ID_H264,     V4L2_PIX_FMT_H264    },
+#endif
 };
 
 static int device_open(AVFormatContext *ctx)
@@ -315,9 +318,9 @@ static void list_formats(AVFormatContext *ctx, int fd, int type)
                    vfd.description);
         } else if (vfd.flags & V4L2_FMT_FLAG_COMPRESSED &&
                    type & V4L_COMPFORMATS) {
-            AVCodec *codec = avcodec_find_encoder(codec_id);
+            const AVCodecDescriptor *desc = avcodec_descriptor_get(codec_id);
             av_log(ctx, AV_LOG_INFO, "C : %9s : %20s :",
-                   codec ? codec->name : "Unsupported",
+                   desc ? desc->name : "Unsupported",
                    vfd.description);
         } else {
             continue;
@@ -782,8 +785,10 @@ static int v4l2_read_header(AVFormatContext *s1)
     if (s->pixel_format) {
         AVCodec *codec = avcodec_find_decoder_by_name(s->pixel_format);
 
-        if (codec)
+        if (codec) {
             s1->video_codec_id = codec->id;
+            st->need_parsing   = AVSTREAM_PARSE_HEADERS;
+        }
 
         pix_fmt = av_get_pix_fmt(s->pixel_format);
 

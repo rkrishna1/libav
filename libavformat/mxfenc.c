@@ -50,19 +50,19 @@ extern AVOutputFormat ff_mxf_d10_muxer;
 #define EDIT_UNITS_PER_BODY 250
 #define KAG_SIZE 512
 
-typedef struct {
+typedef struct MXFLocalTagPair {
     int local_tag;
     UID uid;
 } MXFLocalTagPair;
 
-typedef struct {
+typedef struct MXFIndexEntry {
     uint8_t flags;
     uint64_t offset;
     unsigned slice_offset; ///< offset of audio slice
     uint16_t temporal_ref;
 } MXFIndexEntry;
 
-typedef struct {
+typedef struct MXFStreamContext {
     AudioInterleaveContext aic;
     UID track_essence_element_key;
     int index;               ///< index in mxf_essence_container_uls table
@@ -74,7 +74,7 @@ typedef struct {
     int closed_gop;          ///< gop is closed, used in mpeg-2 frame parsing
 } MXFStreamContext;
 
-typedef struct {
+typedef struct MXFContainerEssenceEntry {
     UID container_ul;
     UID element_ul;
     UID codec_ul;
@@ -1870,7 +1870,7 @@ static int mxf_interleave_get_packet(AVFormatContext *s, AVPacket *out, AVPacket
         }
 
         *out = pktl->pkt;
-        av_dlog(s, "out st:%d dts:%"PRId64"\n", (*out).stream_index, (*out).dts);
+        av_log(s, AV_LOG_TRACE, "out st:%d dts:%"PRId64"\n", (*out).stream_index, (*out).dts);
         s->internal->packet_buffer = pktl->next;
         if(s->streams[pktl->pkt.stream_index]->last_in_packet_buffer == pktl)
             s->streams[pktl->pkt.stream_index]->last_in_packet_buffer= NULL;

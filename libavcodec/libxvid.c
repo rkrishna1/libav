@@ -33,6 +33,7 @@
 #include "libavutil/mathematics.h"
 
 #include "avcodec.h"
+#include "internal.h"
 #include "libxvid.h"
 #include "mpegvideo.h"
 
@@ -275,6 +276,8 @@ static int xvid_strip_vol_header(AVCodecContext *avctx, AVPacket *pkt,
         /* We need to store the header, so extract it */
         if (!avctx->extradata) {
             avctx->extradata = av_malloc(vo_len);
+            if (!avctx->extradata)
+                return AVERROR(ENOMEM);
             memcpy(avctx->extradata, pkt->data, vo_len);
             avctx->extradata_size = vo_len;
         }
@@ -474,7 +477,7 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
         if (!x->twopassbuffer || !x->old_twopassbuffer) {
             av_log(avctx, AV_LOG_ERROR,
                    "Xvid: Cannot allocate 2-pass log buffers\n");
-            return -1;
+            return AVERROR(ENOMEM);
         }
         x->twopassbuffer[0]     =
         x->old_twopassbuffer[0] = 0;
@@ -487,22 +490,22 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
         rc2pass2.bitrate = avctx->bit_rate;
 
         fd = ff_tempfile("xvidff.", &x->twopassfile);
-        if (fd == -1) {
+        if (fd < 0) {
             av_log(avctx, AV_LOG_ERROR, "Xvid: Cannot write 2-pass pipe\n");
-            return -1;
+            return fd;
         }
 
         if (!avctx->stats_in) {
             av_log(avctx, AV_LOG_ERROR,
                    "Xvid: No 2-pass information loaded for second pass\n");
-            return -1;
+            return AVERROR_INVALIDDATA;
         }
 
         if (strlen(avctx->stats_in) >
             write(fd, avctx->stats_in, strlen(avctx->stats_in))) {
             close(fd);
             av_log(avctx, AV_LOG_ERROR, "Xvid: Cannot write to 2-pass pipe\n");
-            return -1;
+            return AVERROR(EIO);
         }
 
         close(fd);
@@ -593,11 +596,15 @@ static av_cold int xvid_encode_init(AVCodecContext *avctx)
         if (avctx->intra_matrix) {
             intra           = avctx->intra_matrix;
             x->intra_matrix = av_malloc(sizeof(unsigned char) * 64);
+            if (!x->intra_matrix)
+                return AVERROR(ENOMEM);
         } else
             intra = NULL;
         if (avctx->inter_matrix) {
             inter           = avctx->inter_matrix;
             x->inter_matrix = av_malloc(sizeof(unsigned char) * 64);
+            if (!x->inter_matrix)
+                return AVERROR(ENOMEM);
         } else
             inter = NULL;
 
@@ -770,7 +777,7 @@ static int xvid_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             return 0;
         av_log(avctx, AV_LOG_ERROR,
                "Xvid: Encoding Error Occurred: %i\n", xerr);
-        return -1;
+        return xerr;
     }
 }
 
@@ -778,8 +785,12 @@ static av_cold int xvid_encode_close(AVCodecContext *avctx)
 {
     struct xvid_context *x = avctx->priv_data;
 
-    xvid_encore(x->encoder_handle, XVID_ENC_DESTROY, NULL, NULL);
+    if (x->encoder_handle) {
+        xvid_encore(x->encoder_handle, XVID_ENC_DESTROY, NULL, NULL);
+        x->encoder_handle = NULL;
+    }
 
+    av_frame_free(&avctx->coded_frame);
     av_freep(&avctx->extradata);
     if (x->twopassbuffer) {
         av_free(x->twopassbuffer);
@@ -824,4 +835,6 @@ AVCodec ff_libxvid_encoder = {
     .close          = xvid_encode_close,
     .pix_fmts       = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
     .priv_class     = &xvid_class,
+    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
 };

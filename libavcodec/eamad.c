@@ -29,6 +29,7 @@
  */
 
 #include "avcodec.h"
+#include "blockdsp.h"
 #include "bytestream.h"
 #include "bswapdsp.h"
 #include "get_bits.h"
@@ -36,9 +37,8 @@
 #include "eaidct.h"
 #include "idctdsp.h"
 #include "internal.h"
-#include "mpeg12.h"
 #include "mpeg12data.h"
-#include "libavutil/imgutils.h"
+#include "mpeg12vlc.h"
 
 #define EA_PREAMBLE_SIZE    8
 #define MADk_TAG MKTAG('M', 'A', 'D', 'k')    /* MAD i-frame */
@@ -145,6 +145,11 @@ static inline void decode_block_intra(MadContext *s, int16_t * block)
                 break;
             } else if (level != 0) {
                 i += run;
+                if (i > 63) {
+                    av_log(s->avctx, AV_LOG_ERROR,
+                           "ac-tex damaged at %d %d\n", s->mb_x, s->mb_y);
+                    return;
+                }
                 j = scantable[i];
                 level = (level*quant_matrix[j]) >> 4;
                 level = (level-1)|1;
@@ -159,6 +164,11 @@ static inline void decode_block_intra(MadContext *s, int16_t * block)
                 run = SHOW_UBITS(re, &s->gb, 6)+1; LAST_SKIP_BITS(re, &s->gb, 6);
 
                 i += run;
+                if (i > 63) {
+                    av_log(s->avctx, AV_LOG_ERROR,
+                           "ac-tex damaged at %d %d\n", s->mb_x, s->mb_y);
+                    return;
+                }
                 j = scantable[i];
                 if (level < 0) {
                     level = -level;
@@ -169,10 +179,6 @@ static inline void decode_block_intra(MadContext *s, int16_t * block)
                     level = (level*quant_matrix[j]) >> 4;
                     level = (level-1)|1;
                 }
-            }
-            if (i > 63) {
-                av_log(s->avctx, AV_LOG_ERROR, "ac-tex damaged at %d %d\n", s->mb_x, s->mb_y);
-                return;
             }
 
             block[j] = level;

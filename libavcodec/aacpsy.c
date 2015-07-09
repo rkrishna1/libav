@@ -160,7 +160,7 @@ typedef struct AacPsyContext{
 /**
  * LAME psy model preset struct
  */
-typedef struct {
+typedef struct PsyLamePreset {
     int   quality;  ///< Quality to map the rest of the vaules to.
      /* This is overloaded to be both kbps per channel in ABR mode, and
       * requested quality in constant quality mode.
@@ -298,6 +298,8 @@ static av_cold int psy_3gpp_init(FFPsyContext *ctx) {
     const float num_bark   = calc_bark((float)bandwidth);
 
     ctx->model_priv_data = av_mallocz(sizeof(AacPsyContext));
+    if (!ctx->model_priv_data)
+        return AVERROR(ENOMEM);
     pctx = (AacPsyContext*) ctx->model_priv_data;
 
     pctx->chan_bitrate = chan_bitrate;
@@ -307,7 +309,7 @@ static av_cold int psy_3gpp_init(FFPsyContext *ctx) {
     ctx->bitres.size   = 6144 - pctx->frame_bits;
     ctx->bitres.size  -= ctx->bitres.size % 8;
     pctx->fill_level   = ctx->bitres.size;
-    minath = ath(3410, ATH_ADD);
+    minath = ath(3410 - 0.733 * ATH_ADD, ATH_ADD);
     for (j = 0; j < 2; j++) {
         AacPsyCoeffs *coeffs = pctx->psy_coef[j];
         const uint8_t *band_sizes = ctx->bands[j];
@@ -349,6 +351,10 @@ static av_cold int psy_3gpp_init(FFPsyContext *ctx) {
     }
 
     pctx->ch = av_mallocz(sizeof(AacPsyChannel) * ctx->avctx->channels);
+    if (!pctx->ch) {
+        av_freep(&pctx);
+        return AVERROR(ENOMEM);
+    }
 
     lame_window_init(pctx, ctx->avctx);
 

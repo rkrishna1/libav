@@ -40,7 +40,6 @@
 #include "libavutil/samplefmt.h"
 #include "libavutil/pixfmt.h"
 #include "libavutil/rational.h"
-#include "libavcodec/avcodec.h"
 
 #include <stddef.h>
 
@@ -1004,6 +1003,8 @@ typedef struct AVFilterGraph {
 
 /**
  * Allocate a filter graph.
+ *
+ * @return the allocated filter graph on success or NULL.
  */
 AVFilterGraph *avfilter_graph_alloc(void);
 

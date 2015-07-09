@@ -86,7 +86,6 @@
 #include "get_bits.h"
 #include "fft.h"
 #include "imdct15.h"
-#include "fmtconvert.h"
 #include "lpc.h"
 #include "kbdwin.h"
 #include "sinewin.h"
@@ -292,6 +291,11 @@ static uint64_t sniff_channel_order(uint8_t (*layout_map)[3], int tags)
     if (num_back_channels < 0)
         return 0;
 
+    if (num_side_channels == 0 && num_back_channels >= 4) {
+        num_side_channels = 2;
+        num_back_channels -= 2;
+    }
+
     i = 0;
     if (num_front_channels & 1) {
         e2c_vec[i] = (struct elem_to_channel) {
@@ -444,12 +448,18 @@ static int output_configure(AACContext *ac,
     AVCodecContext *avctx = ac->avctx;
     int i, channels = 0, ret;
     uint64_t layout = 0;
+    uint8_t id_map[TYPE_END][MAX_ELEM_ID] = {{ 0 }};
+    uint8_t type_counts[TYPE_END] = { 0 };
 
     if (ac->oc[1].layout_map != layout_map) {
         memcpy(ac->oc[1].layout_map, layout_map, tags * sizeof(layout_map[0]));
         ac->oc[1].layout_map_tags = tags;
     }
-
+    for (i = 0; i < tags; i++) {
+        int type =         layout_map[i][0];
+        int id =           layout_map[i][1];
+        id_map[type][id] = type_counts[type]++;
+    }
     // Try to sniff a reasonable channel order, otherwise output the
     // channels in the order the PCE declared them.
     if (avctx->request_channel_layout != AV_CH_LAYOUT_NATIVE)
@@ -457,12 +467,14 @@ static int output_configure(AACContext *ac,
     for (i = 0; i < tags; i++) {
         int type =     layout_map[i][0];
         int id =       layout_map[i][1];
+        int iid =      id_map[type][id];
         int position = layout_map[i][2];
         // Allocate or free elements depending on if they are in the
         // current program configuration.
-        ret = che_configure(ac, position, type, id, &channels);
+        ret = che_configure(ac, position, type, iid, &channels);
         if (ret < 0)
             return ret;
+        ac->tag_che_map[type][id] = ac->che[type][iid];
     }
     if (ac->oc[1].m4ac.ps == 1 && channels == 2) {
         if (layout == AV_CH_FRONT_CENTER) {
@@ -472,7 +484,6 @@ static int output_configure(AACContext *ac,
         }
     }
 
-    memcpy(ac->tag_che_map, ac->che, 4 * MAX_ELEM_ID * sizeof(ac->che[0][0]));
     avctx->channel_layout = ac->oc[1].channel_layout = layout;
     avctx->channels       = ac->oc[1].channels       = channels;
     ac->oc[1].status = oc_type;
@@ -496,7 +507,8 @@ static int set_default_channel_config(AVCodecContext *avctx,
                                       int *tags,
                                       int channel_config)
 {
-    if (channel_config < 1 || channel_config > 7) {
+    if (channel_config < 1 || (channel_config > 7 && channel_config < 11) ||
+        channel_config > 12) {
         av_log(avctx, AV_LOG_ERROR,
                "invalid default channel configuration (%d)\n",
                channel_config);
@@ -553,10 +565,18 @@ static ChannelElement *get_che(AACContext *ac, int type, int elem_id)
     /* For indexed channel configurations map the channels solely based
      * on position. */
     switch (ac->oc[1].m4ac.chan_config) {
+    case 12:
     case 7:
         if (ac->tags_mapped == 3 && type == TYPE_CPE) {
             ac->tags_mapped++;
             return ac->tag_che_map[TYPE_CPE][elem_id] = ac->che[TYPE_CPE][2];
+        }
+    case 11:
+        if (ac->tags_mapped == 2 &&
+            ac->oc[1].m4ac.chan_config == 11 &&
+            type == TYPE_SCE) {
+            ac->tags_mapped++;
+            return ac->tag_che_map[TYPE_SCE][elem_id] = ac->che[TYPE_SCE][1];
         }
     case 6:
         /* Some streams incorrectly code 5.1 audio as
@@ -820,7 +840,7 @@ static int decode_eld_specific_config(AACContext *ac, AVCodecContext *avctx,
         if (len == 15 + 255)
             len += get_bits(gb, 16);
         if (get_bits_left(gb) < len * 8 + 4) {
-            av_log(ac->avctx, AV_LOG_ERROR, overread_err);
+            av_log(avctx, AV_LOG_ERROR, overread_err);
             return AVERROR_INVALIDDATA;
         }
         skip_bits_long(gb, 8 * len);
@@ -863,10 +883,10 @@ static int decode_audio_specific_config(AACContext *ac,
     GetBitContext gb;
     int i, ret;
 
-    av_dlog(avctx, "extradata size %d\n", avctx->extradata_size);
+    ff_dlog(avctx, "extradata size %d\n", avctx->extradata_size);
     for (i = 0; i < avctx->extradata_size; i++)
-        av_dlog(avctx, "%02x ", avctx->extradata[i]);
-    av_dlog(avctx, "\n");
+        ff_dlog(avctx, "%02x ", avctx->extradata[i]);
+    ff_dlog(avctx, "\n");
 
     if ((ret = init_get_bits(&gb, data, bit_size)) < 0)
         return ret;
@@ -913,7 +933,7 @@ static int decode_audio_specific_config(AACContext *ac,
         return AVERROR(ENOSYS);
     }
 
-    av_dlog(avctx,
+    ff_dlog(avctx,
             "AOT %d chan config %d sampling index %d (%d) SBR %d PS %d\n",
             m4ac->object_type, m4ac->chan_config, m4ac->sampling_index,
             m4ac->sample_rate, m4ac->sbr,
@@ -1043,7 +1063,6 @@ static av_cold int aac_decode_init(AVCodecContext *avctx)
 
     ff_aac_sbr_init();
 
-    ff_fmt_convert_init(&ac->fmt_conv, avctx);
     avpriv_float_dsp_init(&ac->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
 
     ac->random_state = 0x1f2e3d4c;
@@ -1145,7 +1164,8 @@ static int decode_ics_info(AACContext *ac, IndividualChannelStream *ics,
     if (aot != AOT_ER_AAC_ELD) {
         if (get_bits1(gb)) {
             av_log(ac->avctx, AV_LOG_ERROR, "Reserved bit set.\n");
-            return AVERROR_INVALIDDATA;
+            if (ac->avctx->err_recognition & AV_EF_BITSTREAM)
+                return AVERROR_INVALIDDATA;
         }
         ics->window_sequence[1] = ics->window_sequence[0];
         ics->window_sequence[0] = get_bits(gb, 2);
@@ -2737,7 +2757,7 @@ static int aac_decode_er_frame(AVCodecContext *avctx, void *data,
 
     ac->tags_mapped = 0;
 
-    if (chan_config < 0 || chan_config >= 8) {
+    if (chan_config < 0 || (chan_config >= 8 && chan_config < 11) || chan_config >= 13) {
         avpriv_request_sample(avctx, "Unknown ER channel configuration %d",
                               chan_config);
         return AVERROR_INVALIDDATA;
@@ -2801,8 +2821,9 @@ static int aac_decode_frame_int(AVCodecContext *avctx, void *data,
         }
     }
 
-    if ((err = frame_configure_elements(avctx)) < 0)
-        goto fail;
+    if (avctx->channels)
+        if ((err = frame_configure_elements(avctx)) < 0)
+            goto fail;
 
     // The FF_PROFILE_AAC_* defines are all object_type - 1
     // This may lead to an undefined profile being signaled
@@ -2812,6 +2833,9 @@ static int aac_decode_frame_int(AVCodecContext *avctx, void *data,
     // parse
     while ((elem_type = get_bits(gb, 3)) != TYPE_END) {
         elem_id = get_bits(gb, 4);
+
+        if (!avctx->channels && elem_type != TYPE_PCE)
+            goto fail;
 
         if (elem_type < TYPE_DSE) {
             if (!(che=get_che(ac, elem_type, elem_id))) {
@@ -2897,6 +2921,11 @@ static int aac_decode_frame_int(AVCodecContext *avctx, void *data,
             err = AVERROR_INVALIDDATA;
             goto fail;
         }
+    }
+
+    if (!avctx->channels) {
+        *got_frame_ptr = 0;
+        return 0;
     }
 
     spectral_to_sample(ac);

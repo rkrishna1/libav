@@ -94,6 +94,7 @@ void av_register_all(void)
     REGISTER_MUXDEMUX(DIRAC,            dirac);
     REGISTER_MUXDEMUX(DNXHD,            dnxhd);
     REGISTER_DEMUXER (DSICIN,           dsicin);
+    REGISTER_DEMUXER (DSS,              dss);
     REGISTER_MUXDEMUX(DTS,              dts);
     REGISTER_MUXDEMUX(DV,               dv);
     REGISTER_DEMUXER (DXA,              dxa);
@@ -162,7 +163,7 @@ void av_register_all(void)
     REGISTER_MUXDEMUX(MPEGTS,           mpegts);
     REGISTER_DEMUXER (MPEGTSRAW,        mpegtsraw);
     REGISTER_DEMUXER (MPEGVIDEO,        mpegvideo);
-    REGISTER_MUXER   (MPJPEG,           mpjpeg);
+    REGISTER_MUXDEMUX(MPJPEG,           mpjpeg);
     REGISTER_DEMUXER (MSNWC_TCP,        msnwc_tcp);
     REGISTER_DEMUXER (MTV,              mtv);
     REGISTER_DEMUXER (MV,               mv);
@@ -290,7 +291,8 @@ void av_register_all(void)
     REGISTER_PROTOCOL(SCTP,             sctp);
     REGISTER_PROTOCOL(SRTP,             srtp);
     REGISTER_PROTOCOL(TCP,              tcp);
-    REGISTER_PROTOCOL(TLS,              tls);
+    REGISTER_PROTOCOL(TLS_GNUTLS,       tls_gnutls);
+    REGISTER_PROTOCOL(TLS_OPENSSL,      tls_openssl);
     REGISTER_PROTOCOL(UDP,              udp);
     REGISTER_PROTOCOL(UNIX,             unix);
 

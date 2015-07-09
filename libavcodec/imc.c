@@ -79,7 +79,7 @@ typedef struct IMCChannel {
     int decoder_reset;
 } IMCChannel;
 
-typedef struct {
+typedef struct IMCContext {
     IMCChannel chctx[2];
 
     /** MDCT tables */
@@ -783,7 +783,7 @@ static int imc_get_coeffs(IMCContext *q, IMCChannel *chctx)
                 cw = 0;
 
                 if (get_bits_count(&q->gb) + cw_len > 512) {
-                    av_dlog(NULL, "Band %i coeff %i cw_len %i\n", i, j, cw_len);
+                    ff_dlog(NULL, "Band %i coeff %i cw_len %i\n", i, j, cw_len);
                     return AVERROR_INVALIDDATA;
                 }
 
@@ -997,7 +997,7 @@ static int imc_decode_frame(AVCodecContext *avctx, void *data,
 
     IMCContext *q = avctx->priv_data;
 
-    LOCAL_ALIGNED_16(uint16_t, buf16, [IMC_BLOCK_SIZE / 2]);
+    LOCAL_ALIGNED_16(uint16_t, buf16, [(IMC_BLOCK_SIZE + FF_INPUT_BUFFER_PADDING_SIZE) / 2]);
 
     if (buf_size < IMC_BLOCK_SIZE * avctx->channels) {
         av_log(avctx, AV_LOG_ERROR, "frame too small!\n");

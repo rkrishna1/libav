@@ -22,9 +22,11 @@
 #include <stdint.h>
 #include <sndio.h>
 
+#include "libavutil/internal.h"
+
 #include "libavformat/avformat.h"
 
-#include "sndio_common.h"
+#include "libavdevice/sndio.h"
 
 static av_cold int audio_write_header(AVFormatContext *s1)
 {

@@ -32,13 +32,14 @@
 #include "internal.h"
 #include "mpeg_er.h"
 #include "mpegvideo.h"
+#include "msmpeg4.h"
 #include "msmpeg4data.h"
 #include "vc1.h"
 #include "vc1data.h"
 
 #if CONFIG_WMV3IMAGE_DECODER || CONFIG_VC1IMAGE_DECODER
 
-typedef struct {
+typedef struct SpriteData {
     /**
      * Transform coefficients for both sprites in 16.16 fixed point format,
      * in the order they appear in the bitstream:
@@ -181,9 +182,9 @@ static void vc1_draw_sprites(VC1Context *v, SpriteData* sd)
         yoff[i] = av_clip(sd->coefs[i][5], 0, v->sprite_height-1 << 16);
         yadv[i] = av_clip(sd->coefs[i][4], 0, ((v->sprite_height << 16) - yoff[i]) / v->output_height);
     }
-    alpha = av_clip(sd->coefs[1][6], 0, (1<<16) - 1);
+    alpha = av_clip_uint16(sd->coefs[1][6]);
 
-    for (plane = 0; plane < (s->flags&CODEC_FLAG_GRAY ? 1 : 3); plane++) {
+    for (plane = 0; plane < (s->avctx->flags & CODEC_FLAG_GRAY ? 1 : 3); plane++) {
         int width = v->output_width>>!!plane;
 
         for (row = 0; row < v->output_height>>!!plane; row++) {
@@ -301,7 +302,7 @@ static void vc1_sprite_flush(AVCodecContext *avctx)
        wrong but it looks better than doing nothing. */
 
     if (f && f->data[0])
-        for (plane = 0; plane < (s->flags&CODEC_FLAG_GRAY ? 1 : 3); plane++)
+        for (plane = 0; plane < (s->avctx->flags & CODEC_FLAG_GRAY ? 1 : 3); plane++)
             for (i = 0; i < v->sprite_height>>!!plane; i++)
                 memset(f->data[plane] + i * f->linesize[plane],
                        plane ? 128 : 0, f->linesize[plane]);
@@ -443,7 +444,7 @@ static av_cold int vc1_decode_init(AVCodecContext *avctx)
         count = avctx->extradata_size*8 - get_bits_count(&gb);
         if (count > 0) {
             av_log(avctx, AV_LOG_INFO, "Extra data: %i bits left, value: %X\n",
-                   count, get_bits(&gb, count));
+                   count, get_bits_long(&gb, FFMIN(count, 32)));
         } else if (count < 0) {
             av_log(avctx, AV_LOG_INFO, "Read %i bits in overflow\n", -count);
         }
@@ -889,7 +890,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                 FFSWAP(uint8_t *, v->mv_f_next[1], v->mv_f[1]);
             }
         }
-        av_dlog(s->avctx, "Consumed %i/%i bits\n",
+        ff_dlog(s->avctx, "Consumed %i/%i bits\n",
                 get_bits_count(&s->gb), s->gb.size_in_bits);
 //  if (get_bits_count(&s->gb) > buf_size * 8)
 //      return -1;
@@ -953,6 +954,9 @@ static const AVProfile profiles[] = {
 static const enum AVPixelFormat vc1_hwaccel_pixfmt_list_420[] = {
 #if CONFIG_VC1_DXVA2_HWACCEL
     AV_PIX_FMT_DXVA2_VLD,
+#endif
+#if CONFIG_VC1_D3D11VA_HWACCEL
+    AV_PIX_FMT_D3D11VA_VLD,
 #endif
 #if CONFIG_VC1_VAAPI_HWACCEL
     AV_PIX_FMT_VAAPI_VLD,

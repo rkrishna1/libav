@@ -86,18 +86,18 @@ typedef const struct EbmlSyntax {
     } def;
 } EbmlSyntax;
 
-typedef struct {
+typedef struct EbmlList {
     int nb_elem;
     void *elem;
 } EbmlList;
 
-typedef struct {
+typedef struct EbmlBin {
     int      size;
     uint8_t *data;
     int64_t  pos;
 } EbmlBin;
 
-typedef struct {
+typedef struct Ebml {
     uint64_t version;
     uint64_t max_size;
     uint64_t id_length;
@@ -105,18 +105,18 @@ typedef struct {
     uint64_t doctype_version;
 } Ebml;
 
-typedef struct {
+typedef struct MatroskaTrackCompression {
     uint64_t algo;
     EbmlBin  settings;
 } MatroskaTrackCompression;
 
-typedef struct {
+typedef struct MatroskaTrackEncoding {
     uint64_t scope;
     uint64_t type;
     MatroskaTrackCompression compression;
 } MatroskaTrackEncoding;
 
-typedef struct {
+typedef struct MatroskaTrackVideo {
     double   frame_rate;
     uint64_t display_width;
     uint64_t display_height;
@@ -126,7 +126,7 @@ typedef struct {
     uint64_t stereo_mode;
 } MatroskaTrackVideo;
 
-typedef struct {
+typedef struct MatroskaTrackAudio {
     double   samplerate;
     double   out_samplerate;
     uint64_t bitdepth;
@@ -143,7 +143,7 @@ typedef struct {
     uint8_t *buf;
 } MatroskaTrackAudio;
 
-typedef struct {
+typedef struct MatroskaTrack {
     uint64_t num;
     uint64_t uid;
     uint64_t type;
@@ -165,7 +165,7 @@ typedef struct {
     int ms_compat;
 } MatroskaTrack;
 
-typedef struct {
+typedef struct MatroskaAttachment {
     uint64_t uid;
     char *filename;
     char *mime;
@@ -174,7 +174,7 @@ typedef struct {
     AVStream *stream;
 } MatroskaAttachment;
 
-typedef struct {
+typedef struct MatroskaChapter {
     uint64_t start;
     uint64_t end;
     uint64_t uid;
@@ -183,17 +183,17 @@ typedef struct {
     AVChapter *chapter;
 } MatroskaChapter;
 
-typedef struct {
+typedef struct MatroskaIndexPos {
     uint64_t track;
     uint64_t pos;
 } MatroskaIndexPos;
 
-typedef struct {
+typedef struct MatroskaIndex {
     uint64_t time;
     EbmlList pos;
 } MatroskaIndex;
 
-typedef struct {
+typedef struct MatroskaTag {
     char *name;
     char *string;
     char *lang;
@@ -201,7 +201,7 @@ typedef struct {
     EbmlList sub;
 } MatroskaTag;
 
-typedef struct {
+typedef struct MatroskaTagTarget {
     char    *type;
     uint64_t typevalue;
     uint64_t trackuid;
@@ -209,27 +209,27 @@ typedef struct {
     uint64_t attachuid;
 } MatroskaTagTarget;
 
-typedef struct {
+typedef struct MatroskaTags {
     MatroskaTagTarget target;
     EbmlList tag;
 } MatroskaTags;
 
-typedef struct {
+typedef struct MatroskaSeekhead {
     uint64_t id;
     uint64_t pos;
 } MatroskaSeekhead;
 
-typedef struct {
+typedef struct MatroskaLevel {
     uint64_t start;
     uint64_t length;
 } MatroskaLevel;
 
-typedef struct {
+typedef struct MatroskaCluster {
     uint64_t timecode;
     EbmlList blocks;
 } MatroskaCluster;
 
-typedef struct {
+typedef struct MatroskaDemuxContext {
     AVFormatContext *ctx;
 
     /* EBML stuff */
@@ -273,7 +273,7 @@ typedef struct {
     int contains_ssa;
 } MatroskaDemuxContext;
 
-typedef struct {
+typedef struct MatroskaBlock {
     uint64_t duration;
     int64_t  reference;
     uint64_t non_simple;
@@ -1608,6 +1608,12 @@ static int matroska_parse_tracks(AVFormatContext *s)
             track->video.fourcc = AV_RL32(track->codec_priv.data);
             codec_id            = ff_codec_get_id(ff_codec_movvideo_tags,
                                                   track->video.fourcc);
+            if (codec_id == AV_CODEC_ID_NONE) {
+                char buf[32];
+                av_get_codec_tag_string(buf, sizeof(buf), track->video.fourcc);
+                av_log(matroska->ctx, AV_LOG_ERROR,
+                       "mov FourCC not found %s.\n", buf);
+            }
         } else if (codec_id == AV_CODEC_ID_PCM_S16BE) {
             switch (track->audio.bitdepth) {
             case  8:
@@ -1710,6 +1716,8 @@ static int matroska_parse_tracks(AVFormatContext *s)
                 return AVERROR_INVALIDDATA;
             track->audio.buf = av_malloc(track->audio.frame_size *
                                          track->audio.sub_packet_h);
+            if (!track->audio.buf)
+                return AVERROR(ENOMEM);
             if (codec_id == AV_CODEC_ID_RA_288) {
                 st->codec->block_align = track->audio.coded_framesize;
                 track->codec_priv.size = 0;
@@ -1825,8 +1833,12 @@ static int matroska_read_header(AVFormatContext *s)
     matroska->ctx = s;
 
     /* First read the EBML header. */
-    if (ebml_parse(matroska, ebml_syntax, &ebml) ||
-        ebml.version         > EBML_VERSION      ||
+    if (ebml_parse(matroska, ebml_syntax, &ebml) || !ebml.doctype) {
+        av_log(matroska->ctx, AV_LOG_ERROR, "EBML header parsing failed\n");
+        ebml_free(ebml_syntax, &ebml);
+        return AVERROR_INVALIDDATA;
+    }
+    if (ebml.version         > EBML_VERSION      ||
         ebml.max_size        > sizeof(uint64_t)  ||
         ebml.id_length       > sizeof(uint32_t)  ||
         ebml.doctype_version > 3) {
@@ -1885,22 +1897,45 @@ static int matroska_read_header(AVFormatContext *s)
             av_dict_set(&st->metadata, "filename", attachments[j].filename, 0);
             av_dict_set(&st->metadata, "mimetype", attachments[j].mime, 0);
             st->codec->codec_id   = AV_CODEC_ID_NONE;
-            st->codec->codec_type = AVMEDIA_TYPE_ATTACHMENT;
-            st->codec->extradata  = av_malloc(attachments[j].bin.size);
-            if (!st->codec->extradata)
-                break;
-            st->codec->extradata_size = attachments[j].bin.size;
-            memcpy(st->codec->extradata, attachments[j].bin.data,
-                   attachments[j].bin.size);
 
-            for (i = 0; ff_mkv_mime_tags[i].id != AV_CODEC_ID_NONE; i++) {
-                if (!strncmp(ff_mkv_mime_tags[i].str, attachments[j].mime,
-                             strlen(ff_mkv_mime_tags[i].str))) {
-                    st->codec->codec_id = ff_mkv_mime_tags[i].id;
+            for (i = 0; ff_mkv_image_mime_tags[i].id != AV_CODEC_ID_NONE; i++) {
+                if (!strncmp(ff_mkv_image_mime_tags[i].str, attachments[j].mime,
+                             strlen(ff_mkv_image_mime_tags[i].str))) {
+                    st->codec->codec_id = ff_mkv_image_mime_tags[i].id;
                     break;
                 }
             }
+
             attachments[j].stream = st;
+
+            if (st->codec->codec_id != AV_CODEC_ID_NONE) {
+                st->disposition      |= AV_DISPOSITION_ATTACHED_PIC;
+                st->codec->codec_type = AVMEDIA_TYPE_VIDEO;
+
+                av_init_packet(&st->attached_pic);
+                if ((res = av_new_packet(&st->attached_pic, attachments[j].bin.size)) < 0)
+                    return res;
+                memcpy(st->attached_pic.data, attachments[j].bin.data, attachments[j].bin.size);
+                st->attached_pic.stream_index = st->index;
+                st->attached_pic.flags       |= AV_PKT_FLAG_KEY;
+            } else {
+                st->codec->codec_type = AVMEDIA_TYPE_ATTACHMENT;
+                st->codec->extradata  = av_malloc(attachments[j].bin.size);
+                if (!st->codec->extradata)
+                    break;
+
+                st->codec->extradata_size = attachments[j].bin.size;
+                memcpy(st->codec->extradata, attachments[j].bin.data,
+                       attachments[j].bin.size);
+
+                for (i = 0; ff_mkv_mime_tags[i].id != AV_CODEC_ID_NONE; i++) {
+                    if (!strncmp(ff_mkv_mime_tags[i].str, attachments[j].mime,
+                                strlen(ff_mkv_mime_tags[i].str))) {
+                        st->codec->codec_id = ff_mkv_mime_tags[i].id;
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -2270,6 +2305,10 @@ static int matroska_parse_frame(MatroskaDemuxContext *matroska,
         offset = 8;
 
     pkt = av_mallocz(sizeof(AVPacket));
+    if (!pkt) {
+        av_freep(&pkt_data);
+        return AVERROR(ENOMEM);
+    }
     /* XXX: prevent data copy... */
     if (av_new_packet(pkt, pkt_size + offset) < 0) {
         av_free(pkt);

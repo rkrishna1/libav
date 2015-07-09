@@ -220,7 +220,7 @@ static av_cold int vpx_init(AVCodecContext *avctx,
                             const struct vpx_codec_iface *iface)
 {
     VP8Context *ctx = avctx->priv_data;
-    struct vpx_codec_enc_cfg enccfg;
+    struct vpx_codec_enc_cfg enccfg = { 0 };
     int res;
 
     av_log(avctx, AV_LOG_INFO, "%s\n", vpx_codec_version_str());
@@ -292,7 +292,7 @@ static av_cold int vpx_init(AVCodecContext *avctx,
     if (enccfg.g_pass == VPX_RC_FIRST_PASS)
         enccfg.g_lag_in_frames = 0;
     else if (enccfg.g_pass == VPX_RC_LAST_PASS) {
-        int decode_size;
+        int decode_size, ret;
 
         if (!avctx->stats_in) {
             av_log(avctx, AV_LOG_ERROR, "No stats file for second pass\n");
@@ -300,12 +300,12 @@ static av_cold int vpx_init(AVCodecContext *avctx,
         }
 
         ctx->twopass_stats.sz  = strlen(avctx->stats_in) * 3 / 4;
-        ctx->twopass_stats.buf = av_malloc(ctx->twopass_stats.sz);
-        if (!ctx->twopass_stats.buf) {
+        ret = av_reallocp(&ctx->twopass_stats.buf, ctx->twopass_stats.sz);
+        if (ret < 0) {
             av_log(avctx, AV_LOG_ERROR,
                    "Stat buffer alloc (%zu bytes) failed\n",
                    ctx->twopass_stats.sz);
-            return AVERROR(ENOMEM);
+            return ret;
         }
         decode_size = av_base64_decode(ctx->twopass_stats.buf, avctx->stats_in,
                                        ctx->twopass_stats.sz);
@@ -321,8 +321,12 @@ static av_cold int vpx_init(AVCodecContext *avctx,
     /* 0-3: For non-zero values the encoder increasingly optimizes for reduced
        complexity playback on low powered devices at the expense of encode
        quality. */
-   if (avctx->profile != FF_PROFILE_UNKNOWN)
-       enccfg.g_profile = avctx->profile;
+    if (avctx->profile != FF_PROFILE_UNKNOWN)
+        enccfg.g_profile = avctx->profile;
+    else if (avctx->pix_fmt == AV_PIX_FMT_YUV420P)
+        avctx->profile = enccfg.g_profile = FF_PROFILE_VP9_0;
+    else
+        avctx->profile = enccfg.g_profile = FF_PROFILE_VP9_1;
 
     enccfg.g_error_resilient = ctx->error_resilient;
 
@@ -346,8 +350,11 @@ static av_cold int vpx_init(AVCodecContext *avctx,
         codecctl_int(avctx, VP8E_SET_ARNR_STRENGTH,    ctx->arnr_strength);
     if (ctx->arnr_type >= 0)
         codecctl_int(avctx, VP8E_SET_ARNR_TYPE,        ctx->arnr_type);
-    codecctl_int(avctx, VP8E_SET_NOISE_SENSITIVITY, avctx->noise_reduction);
-    codecctl_int(avctx, VP8E_SET_TOKEN_PARTITIONS,  av_log2(avctx->slices));
+
+    if (CONFIG_LIBVPX_VP8_ENCODER && iface == &vpx_codec_vp8_cx_algo) {
+        codecctl_int(avctx, VP8E_SET_NOISE_SENSITIVITY, avctx->noise_reduction);
+        codecctl_int(avctx, VP8E_SET_TOKEN_PARTITIONS,  av_log2(avctx->slices));
+    }
 #if FF_API_MPV_OPT
     FF_DISABLE_DEPRECATION_WARNINGS
     if (avctx->mb_threshold) {
@@ -361,8 +368,8 @@ static av_cold int vpx_init(AVCodecContext *avctx,
     codecctl_int(avctx, VP8E_SET_CQ_LEVEL,          ctx->crf);
 
     //provide dummy value to initialize wrapper, values will be updated each _encode()
-    vpx_img_wrap(&ctx->rawimg, VPX_IMG_FMT_I420, avctx->width, avctx->height, 1,
-                 (unsigned char*)1);
+    vpx_img_wrap(&ctx->rawimg, ff_vpx_pixfmt_to_imgfmt(avctx->pix_fmt),
+                 avctx->width, avctx->height, 1, (unsigned char *)1);
 
     avctx->coded_frame = av_frame_alloc();
     if (!avctx->coded_frame) {
@@ -620,9 +627,6 @@ AVCodec ff_libvpx_vp8_encoder = {
 #if CONFIG_LIBVPX_VP9_ENCODER
 static av_cold int vp9_init(AVCodecContext *avctx)
 {
-    int ret;
-    if ((ret = ff_vp9_check_experimental(avctx)))
-        return ret;
     return vpx_init(avctx, &vpx_codec_vp9_cx_algo);
 }
 
@@ -631,6 +635,14 @@ static const AVClass class_vp9 = {
     .item_name  = av_default_item_name,
     .option     = options,
     .version    = LIBAVUTIL_VERSION_INT,
+};
+
+static const AVProfile profiles[] = {
+    { FF_PROFILE_VP9_0, "Profile 0" },
+    { FF_PROFILE_VP9_1, "Profile 1" },
+    { FF_PROFILE_VP9_2, "Profile 2" },
+    { FF_PROFILE_VP9_3, "Profile 3" },
+    { FF_PROFILE_UNKNOWN },
 };
 
 AVCodec ff_libvpx_vp9_encoder = {
@@ -643,7 +655,16 @@ AVCodec ff_libvpx_vp9_encoder = {
     .encode2        = vp8_encode,
     .close          = vp8_free,
     .capabilities   = CODEC_CAP_DELAY | CODEC_CAP_AUTO_THREADS,
-    .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
+    .pix_fmts       = (const enum AVPixelFormat[]) {
+        AV_PIX_FMT_YUV420P,
+#if VPX_IMAGE_ABI_VERSION >= 3
+        AV_PIX_FMT_YUV422P,
+        AV_PIX_FMT_YUV444P,
+        AV_PIX_FMT_YUV440P,
+#endif
+        AV_PIX_FMT_NONE,
+    },
+    .profiles       = NULL_IF_CONFIG_SMALL(profiles),
     .priv_class     = &class_vp9,
     .defaults       = defaults,
 };

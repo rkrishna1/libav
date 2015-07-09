@@ -12,6 +12,33 @@ version <next>:
 - VP8 in Ogg demuxing
 - OpenH264 encoder wrapper
 - Support DNx100 (960x720@8)
+- Direct3D11-accelerated decoding
+- DXVA2-accelerated HEVC decoding
+- AAC ELD 480 decoding
+- Intel QSV-accelerated H.264 decoding
+- DSS SP decoder and DSS demuxer
+- RTP depacketizer for AC3 payload format (RFC 4184)
+- RTP depacketizer for loss tolerant payload format for MP3 audio (RFC 5219)
+- RTP depacketizer for DV (RFC 6469)
+- Canopus HQX decoder
+- RTP depacketization of T.140 text (RFC 4103)
+- VP9 RTP payload format (draft 0) experimental depacketizer
+- TDSC decoder
+- DTS lossless extension (XLL) decoding (not lossless, disabled by default)
+- Intel QSV-accelerated H.264 encoding
+- MMAL-accelerated H.264 decoding
+- DTS decoding through libdcadec
+- Canopus HQ/HQA decoder
+- Automatically rotate videos based on metadata in avconv
+- improved Quickdraw compatibility
+- NVIDIA NVENC-accelerated H.264 and HEVC encoding support
+- Multipart JPEG demuxer
+- Support the extended vp9 profiles in the libvpx wrapper
+- Hap decoder and encoder
+- DirectDraw Surface image/texture decoder
+- rewritten ASF demuxer
+- Go2Meeting decoding support
+- Intel QSV-accelerated MPEG-2 video and HEVC encoding
 
 
 version 11:

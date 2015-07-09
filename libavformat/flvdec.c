@@ -43,7 +43,7 @@
 
 #define VALIDATE_INDEX_TS_THRESH 2500
 
-typedef struct {
+typedef struct FLVContext {
     const AVClass *class; ///< Class for private options.
     int trust_metadata;   ///< configure streams according onMetaData
     int wrong_dts;        ///< wrong dts due to negative cts
@@ -737,7 +737,8 @@ skip:
 static int flv_read_packet(AVFormatContext *s, AVPacket *pkt)
 {
     FLVContext *flv = s->priv_data;
-    int ret, i, type, size, flags, is_audio;
+    int ret, i, size, flags, is_audio;
+    enum FlvTagType type;
     int64_t next, pos;
     int64_t dts, pts = AV_NOPTS_VALUE;
     int sample_rate = 0, channels = 0;
@@ -750,7 +751,7 @@ static int flv_read_packet(AVFormatContext *s, AVPacket *pkt)
         size = avio_rb24(s->pb);
         dts  = avio_rb24(s->pb);
         dts |= avio_r8(s->pb) << 24;
-        av_dlog(s, "type:%d, size:%d, dts:%"PRId64"\n", type, size, dts);
+        av_log(s, AV_LOG_TRACE, "type:%d, size:%d, dts:%"PRId64"\n", type, size, dts);
         if (s->pb->eof_reached)
             return AVERROR_EOF;
         avio_skip(s->pb, 3); /* stream id, always 0 */
@@ -823,7 +824,7 @@ skip:
             if (!st)
                 return AVERROR(ENOMEM);
         }
-        av_dlog(s, "%d %X %d \n", is_audio, flags, st->discard);
+        av_log(s, AV_LOG_TRACE, "%d %X %d \n", is_audio, flags, st->discard);
 
         if ((flags & FLV_VIDEO_FRAMETYPE_MASK) == FLV_FRAME_KEY ||
             is_audio)
@@ -933,7 +934,7 @@ skip:
                     st->codec->sample_rate = cfg.ext_sample_rate;
                 else
                     st->codec->sample_rate = cfg.sample_rate;
-                av_dlog(s, "mp4a config channels %d sample rate %d\n",
+                av_log(s, AV_LOG_TRACE, "mp4a config channels %d sample rate %d\n",
                         st->codec->channels, st->codec->sample_rate);
             }
 

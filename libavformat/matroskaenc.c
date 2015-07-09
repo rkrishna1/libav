@@ -67,19 +67,19 @@ typedef struct mkv_seekhead {
     int                     num_entries;
 } mkv_seekhead;
 
-typedef struct {
+typedef struct mkv_cuepoint {
     uint64_t        pts;
     int             tracknum;
     int64_t         cluster_pos;        ///< file offset of the cluster containing the block
 } mkv_cuepoint;
 
-typedef struct {
+typedef struct mkv_cues {
     int64_t         segment_offset;
     mkv_cuepoint    *entries;
     int             num_entries;
 } mkv_cues;
 
-typedef struct {
+typedef struct mkv_track {
     int             write_dts;
     int64_t         ts_offset;
 } mkv_track;
@@ -769,6 +769,8 @@ static int mkv_write_track(AVFormatContext *s, MatroskaMuxContext *mkv,
     // if we need to clear it.
     if (!(st->disposition & AV_DISPOSITION_DEFAULT))
         put_ebml_uint(pb, MATROSKA_ID_TRACKFLAGDEFAULT, !!(st->disposition & AV_DISPOSITION_DEFAULT));
+    if (st->disposition & AV_DISPOSITION_FORCED)
+        put_ebml_uint(pb, MATROSKA_ID_TRACKFLAGFORCED, !!(st->disposition & AV_DISPOSITION_FORCED));
 
     if (codec->codec_type == AVMEDIA_TYPE_AUDIO && codec->initial_padding) {
         mkv->tracks[i].ts_offset = av_rescale_q(codec->initial_padding,
@@ -915,14 +917,20 @@ static int mkv_write_chapters(AVFormatContext *s)
     for (i = 0; i < s->nb_chapters; i++) {
         ebml_master chapteratom, chapterdisplay;
         AVChapter *c     = s->chapters[i];
+        int64_t chapterstart = av_rescale_q(c->start, c->time_base, scale);
+        int64_t chapterend   = av_rescale_q(c->end,   c->time_base, scale);
         AVDictionaryEntry *t = NULL;
+        if (chapterstart < 0 || chapterstart > chapterend || chapterend < 0) {
+            av_log(s, AV_LOG_ERROR,
+                   "Invalid chapter start (%"PRId64") or end (%"PRId64").\n",
+                   chapterstart, chapterend);
+            return AVERROR_INVALIDDATA;
+        }
 
         chapteratom = start_ebml_master(pb, MATROSKA_ID_CHAPTERATOM, 0);
         put_ebml_uint(pb, MATROSKA_ID_CHAPTERUID, c->id);
-        put_ebml_uint(pb, MATROSKA_ID_CHAPTERTIMESTART,
-                      av_rescale_q(c->start, c->time_base, scale));
-        put_ebml_uint(pb, MATROSKA_ID_CHAPTERTIMEEND,
-                      av_rescale_q(c->end,   c->time_base, scale));
+        put_ebml_uint(pb, MATROSKA_ID_CHAPTERTIMESTART, chapterstart);
+        put_ebml_uint(pb, MATROSKA_ID_CHAPTERTIMEEND, chapterend);
         put_ebml_uint(pb, MATROSKA_ID_CHAPTERFLAGHIDDEN , 0);
         put_ebml_uint(pb, MATROSKA_ID_CHAPTERFLAGENABLED, 1);
         if ((t = av_dict_get(c->metadata, "title", NULL, 0))) {
@@ -1088,6 +1096,11 @@ static int mkv_write_attachments(AVFormatContext *s)
             for (i = 0; ff_mkv_mime_tags[i].id != AV_CODEC_ID_NONE; i++)
                 if (ff_mkv_mime_tags[i].id == st->codec->codec_id) {
                     mimetype = ff_mkv_mime_tags[i].str;
+                    break;
+                }
+            for (i = 0; ff_mkv_image_mime_tags[i].id != AV_CODEC_ID_NONE; i++)
+                if (ff_mkv_image_mime_tags[i].id == st->codec->codec_id) {
+                    mimetype = ff_mkv_image_mime_tags[i].str;
                     break;
                 }
         }
@@ -1617,7 +1630,7 @@ static int mkv_write_flush_packet(AVFormatContext *s, AVPacket *pkt)
                 mkv_flush_dynbuf(s);
             avio_flush(s->pb);
         }
-        return 0;
+        return 1;
     }
     return mkv_write_packet(s, pkt);
 }

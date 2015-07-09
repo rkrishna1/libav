@@ -27,6 +27,7 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/colorspace.h"
+#include "libavutil/display.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/imgutils.h"
@@ -265,6 +266,7 @@ static int rdftspeed = 20;
 #if CONFIG_AVFILTER
 static char *vfilters = NULL;
 #endif
+static int autorotate = 1;
 
 /* current context */
 static int is_full_screen;
@@ -1033,7 +1035,7 @@ static void stream_pause(VideoState *is)
 
 static double compute_target_time(double frame_current_pts, VideoState *is)
 {
-    double delay, sync_threshold, diff;
+    double delay, sync_threshold, diff = 0;
 
     /* compute nominal delay */
     delay = frame_current_pts - is->frame_last_pts;
@@ -1065,7 +1067,7 @@ static double compute_target_time(double frame_current_pts, VideoState *is)
     }
     is->frame_timer += delay;
 
-    av_dlog(NULL, "video: delay=%0.3f pts=%0.3f A-V=%f\n",
+    av_log(NULL, AV_LOG_TRACE, "video: delay=%0.3f pts=%0.3f A-V=%f\n",
             delay, frame_current_pts, -diff);
 
     return is->frame_timer;
@@ -1504,7 +1506,7 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
     char sws_flags_str[128];
     char buffersrc_args[256];
     int ret;
-    AVFilterContext *filt_src = NULL, *filt_out = NULL, *filt_format;
+    AVFilterContext *filt_src = NULL, *filt_out = NULL, *last_filter;
     AVCodecContext *codec = is->video_st->codec;
 
     snprintf(sws_flags_str, sizeof(sws_flags_str), "flags=%"PRId64, sws_flags);
@@ -1526,13 +1528,43 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
                                             "out", NULL, NULL, graph)) < 0)
         return ret;
 
-    if ((ret = avfilter_graph_create_filter(&filt_format,
-                                            avfilter_get_by_name("format"),
-                                            "format", "yuv420p", NULL, graph)) < 0)
-        return ret;
-    if ((ret = avfilter_link(filt_format, 0, filt_out, 0)) < 0)
-        return ret;
+    last_filter = filt_out;
 
+/* Note: this macro adds a filter before the lastly added filter, so the
+ * processing order of the filters is in reverse */
+#define INSERT_FILT(name, arg) do {                                          \
+    AVFilterContext *filt_ctx;                                               \
+                                                                             \
+    ret = avfilter_graph_create_filter(&filt_ctx,                            \
+                                       avfilter_get_by_name(name),           \
+                                       "avplay_" name, arg, NULL, graph);    \
+    if (ret < 0)                                                             \
+        return ret;                                                          \
+                                                                             \
+    ret = avfilter_link(filt_ctx, 0, last_filter, 0);                        \
+    if (ret < 0)                                                             \
+        return ret;                                                          \
+                                                                             \
+    last_filter = filt_ctx;                                                  \
+} while (0)
+
+    INSERT_FILT("format", "yuv420p");
+
+    if (autorotate) {
+        uint8_t* displaymatrix = av_stream_get_side_data(is->video_st,
+                                                         AV_PKT_DATA_DISPLAYMATRIX, NULL);
+        if (displaymatrix) {
+            double rot = av_display_rotation_get((int32_t*) displaymatrix);
+            if (rot < -135 || rot > 135) {
+                INSERT_FILT("vflip", NULL);
+                INSERT_FILT("hflip", NULL);
+            } else if (rot < -45) {
+                INSERT_FILT("transpose", "dir=clock");
+            } else if (rot > 45) {
+                INSERT_FILT("transpose", "dir=cclock");
+            }
+        }
+    }
 
     if (vfilters) {
         AVFilterInOut *outputs = avfilter_inout_alloc();
@@ -1544,14 +1576,14 @@ static int configure_video_filters(AVFilterGraph *graph, VideoState *is, const c
         outputs->next    = NULL;
 
         inputs->name    = av_strdup("out");
-        inputs->filter_ctx = filt_format;
+        inputs->filter_ctx = last_filter;
         inputs->pad_idx = 0;
         inputs->next    = NULL;
 
         if ((ret = avfilter_graph_parse(graph, vfilters, inputs, outputs, NULL)) < 0)
             return ret;
     } else {
-        if ((ret = avfilter_link(filt_src, 0, filt_format, 0)) < 0)
+        if ((ret = avfilter_link(filt_src, 0, last_filter, 0)) < 0)
             return ret;
     }
 
@@ -1580,12 +1612,23 @@ static int video_thread(void *arg)
     AVFilterContext *filt_out = NULL, *filt_in = NULL;
     int last_w = is->video_st->codec->width;
     int last_h = is->video_st->codec->height;
+    if (!graph) {
+        av_frame_free(&frame);
+        return AVERROR(ENOMEM);
+    }
 
     if ((ret = configure_video_filters(graph, is, vfilters)) < 0)
         goto the_end;
     filt_in  = is->in_video_filter;
     filt_out = is->out_video_filter;
 #endif
+
+    if (!frame) {
+#if CONFIG_AVFILTER
+        avfilter_graph_free(&graph);
+#endif
+        return AVERROR(ENOMEM);
+    }
 
     for (;;) {
 #if CONFIG_AVFILTER
@@ -1606,7 +1649,7 @@ static int video_thread(void *arg)
 #if CONFIG_AVFILTER
         if (   last_w != is->video_st->codec->width
             || last_h != is->video_st->codec->height) {
-            av_dlog(NULL, "Changing size %dx%d -> %dx%d\n", last_w, last_h,
+            av_log(NULL, AV_LOG_TRACE, "Changing size %dx%d -> %dx%d\n", last_w, last_h,
                     is->video_st->codec->width, is->video_st->codec->height);
             avfilter_graph_free(&graph);
             graph = avfilter_graph_alloc();
@@ -1635,7 +1678,7 @@ static int video_thread(void *arg)
             if (av_cmp_q(tb, is->video_st->time_base)) {
                 av_unused int64_t pts1 = pts_int;
                 pts_int = av_rescale_q(pts_int, tb, is->video_st->time_base);
-                av_dlog(NULL, "video_thread(): "
+                av_log(NULL, AV_LOG_TRACE, "video_thread(): "
                         "tb:%d/%d pts:%"PRId64" -> tb:%d/%d pts:%"PRId64"\n",
                         tb.num, tb.den, pts1,
                         is->video_st->time_base.num, is->video_st->time_base.den, pts_int);
@@ -1814,7 +1857,7 @@ static int synchronize_audio(VideoState *is, short *samples,
                         samples_size = wanted_size;
                     }
                 }
-                av_dlog(NULL, "diff=%f adiff=%f sample_diff=%d apts=%0.3f vpts=%0.3f %f\n",
+                av_log(NULL, AV_LOG_TRACE, "diff=%f adiff=%f sample_diff=%d apts=%0.3f vpts=%0.3f %f\n",
                         diff, avg_diff, samples_size - samples_size1,
                         is->audio_clock, is->video_clock, is->audio_diff_threshold);
             }
@@ -2254,6 +2297,11 @@ static int decode_thread(void *arg)
     global_video_state = is;
 
     ic = avformat_alloc_context();
+    if (!ic) {
+        av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
     ic->interrupt_callback.callback = decode_interrupt_cb;
     err = avformat_open_input(&ic, is->filename, is->iformat, &format_opts);
     if (err < 0) {
@@ -2898,6 +2946,7 @@ static const OptionDef options[] = {
     { "rdftspeed", OPT_INT | HAS_ARG| OPT_AUDIO | OPT_EXPERT, { &rdftspeed }, "rdft speed", "msecs" },
     { "default", HAS_ARG | OPT_AUDIO | OPT_VIDEO | OPT_EXPERT, { opt_default }, "generic catch all option", "" },
     { "i", 0, { NULL }, "avconv compatibility dummy option", ""},
+    { "autorotate", OPT_BOOL, { &autorotate }, "automatically rotate video", "" },
     { NULL, },
 };
 

@@ -31,6 +31,7 @@
 #include "mpegvideo.h"
 #include "h263.h"
 #include "h261.h"
+#include "mpegvideodata.h"
 
 int ff_h261_get_picture_format(int width, int height)
 {
@@ -63,14 +64,14 @@ void ff_h261_encode_picture_header(MpegEncContext *s, int picture_number)
 
     put_bits(&s->pb, 1, 0); /* split screen off */
     put_bits(&s->pb, 1, 0); /* camera  off */
-    put_bits(&s->pb, 1, 0); /* freeze picture release off */
+    put_bits(&s->pb, 1, s->pict_type == AV_PICTURE_TYPE_I); /* freeze picture release on/off */
 
     format = ff_h261_get_picture_format(s->width, s->height);
 
     put_bits(&s->pb, 1, format); /* 0 == QCIF, 1 == CIF */
 
-    put_bits(&s->pb, 1, 0); /* still image mode */
-    put_bits(&s->pb, 1, 0); /* reserved */
+    put_bits(&s->pb, 1, 1); /* still image mode */
+    put_bits(&s->pb, 1, 1); /* reserved */
 
     put_bits(&s->pb, 1, 0); /* no PEI */
     if (format == 0)
@@ -323,7 +324,12 @@ av_cold void ff_h261_encode_init(MpegEncContext *s)
     s->c_dc_scale_table = ff_mpeg1_dc_scale_table;
 }
 
-FF_MPV_GENERIC_CLASS(h261)
+static const AVClass h261_class = {
+    .class_name = "h261 encoder",
+    .item_name  = av_default_item_name,
+    .option     = ff_mpv_generic_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
 
 AVCodec ff_h261_encoder = {
     .name           = "h261",

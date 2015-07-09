@@ -45,8 +45,8 @@
 #include "libavutil/dict.h"
 #include "libavutil/opt.h"
 #include "libavutil/cpu.h"
+#include "avversion.h"
 #include "cmdutils.h"
-#include "version.h"
 #if CONFIG_NETWORK
 #include "libavformat/network.h"
 #endif
@@ -724,6 +724,7 @@ int opt_loglevel(void *optctx, const char *opt, const char *arg)
         { "info"   , AV_LOG_INFO    },
         { "verbose", AV_LOG_VERBOSE },
         { "debug"  , AV_LOG_DEBUG   },
+        { "trace"  , AV_LOG_TRACE   },
     };
     char *tail;
     int level;
@@ -1587,6 +1588,28 @@ int check_stream_specifier(AVFormatContext *s, AVStream *st, const char *spec)
 
         av_freep(&key);
         return ret;
+    } else if (*spec == 'u') {
+        AVCodecContext *avctx = st->codec;
+        int val;
+        switch (avctx->codec_type) {
+        case AVMEDIA_TYPE_AUDIO:
+            val = avctx->sample_rate && avctx->channels;
+            if (avctx->sample_fmt == AV_SAMPLE_FMT_NONE)
+                return 0;
+            break;
+        case AVMEDIA_TYPE_VIDEO:
+            val = avctx->width && avctx->height;
+            if (avctx->pix_fmt == AV_PIX_FMT_NONE)
+                return 0;
+            break;
+        case AVMEDIA_TYPE_UNKNOWN:
+            val = 0;
+            break;
+        default:
+            val = 1;
+            break;
+        }
+        return avctx->codec_id != AV_CODEC_ID_NONE && val != 0;
     } else if (!*spec) /* empty specifier, matches everything */
         return 1;
 

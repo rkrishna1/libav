@@ -46,7 +46,7 @@ typedef struct PacketDesc {
     struct PacketDesc *next;
 } PacketDesc;
 
-typedef struct {
+typedef struct StreamInfo {
     AVFifoBuffer *fifo;
     uint8_t id;
     int max_buffer_size; /* in bytes */
@@ -62,7 +62,7 @@ typedef struct {
     int64_t vobu_start_pts;
 } StreamInfo;
 
-typedef struct {
+typedef struct MpegMuxContext {
     const AVClass *class;
     int packet_size; /* required packet size */
     int packet_number;
@@ -586,7 +586,7 @@ static int flush_packet(AVFormatContext *ctx, int stream_index,
 
     id = stream->id;
 
-    av_dlog(ctx, "packet ID=%2x PTS=%0.3f\n", id, pts / 90000.0);
+    av_log(ctx, AV_LOG_TRACE, "packet ID=%2x PTS=%0.3f\n", id, pts / 90000.0);
 
     buf_ptr = buffer;
 
@@ -988,7 +988,7 @@ retry:
                 best_dts = pkt_desc->dts;
         }
 
-        av_dlog(ctx, "bumping scr, scr:%f, dts:%f\n",
+        av_log(ctx, AV_LOG_TRACE, "bumping scr, scr:%f, dts:%f\n",
                 scr / 90000.0, best_dts / 90000.0);
         if (best_dts == INT64_MAX)
             return 0;
@@ -1022,7 +1022,7 @@ retry:
     }
 
     if (timestamp_packet) {
-        av_dlog(ctx, "dts:%f pts:%f scr:%f stream:%d\n",
+        av_log(ctx, AV_LOG_TRACE, "dts:%f pts:%f scr:%f stream:%d\n",
                 timestamp_packet->dts / 90000.0,
                 timestamp_packet->pts / 90000.0,
                 scr / 90000.0, best_i);
@@ -1092,7 +1092,7 @@ static int mpeg_mux_write_packet(AVFormatContext *ctx, AVPacket *pkt)
         dts += 2 * preload;
     }
 
-    av_dlog(ctx, "dts:%f pts:%f flags:%d stream:%d nopts:%d\n",
+    av_log(ctx, AV_LOG_TRACE, "dts:%f pts:%f flags:%d stream:%d nopts:%d\n",
             dts / 90000.0, pts / 90000.0, pkt->flags,
             pkt->stream_index, pts != AV_NOPTS_VALUE);
     if (!stream->premux_packet)

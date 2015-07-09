@@ -231,6 +231,8 @@ static int decode_main_header(NUTContext *nut)
 
     GET_V(nut->time_base_count, tmp > 0 && tmp < INT_MAX / sizeof(AVRational));
     nut->time_base = av_malloc(nut->time_base_count * sizeof(AVRational));
+    if (!nut->time_base)
+        return AVERROR(ENOMEM);
 
     for (i = 0; i < nut->time_base_count; i++) {
         GET_V(nut->time_base[i].num, tmp > 0 && tmp < (1ULL << 31));
@@ -332,6 +334,8 @@ static int decode_main_header(NUTContext *nut)
     }
 
     nut->stream = av_mallocz(sizeof(StreamContext) * stream_count);
+    if (!nut->stream)
+        return AVERROR(ENOMEM);
     for (i = 0; i < stream_count; i++)
         avformat_new_stream(s, NULL);
 
@@ -405,6 +409,8 @@ static int decode_stream_header(NUTContext *nut)
     if (st->codec->extradata_size) {
         st->codec->extradata = av_mallocz(st->codec->extradata_size +
                                           FF_INPUT_BUFFER_PADDING_SIZE);
+        if (!st->codec->extradata)
+            return AVERROR(ENOMEM);
         avio_read(bc, st->codec->extradata, st->codec->extradata_size);
     }
 
@@ -481,6 +487,10 @@ static int decode_info_header(NUTContext *nut)
                                      nut->time_base[chapter_start %
                                                     nut->time_base_count],
                                      start, start + chapter_len, NULL);
+        if (!chapter) {
+            av_log(s, AV_LOG_ERROR, "Could not create chapter.\n");
+            return AVERROR(ENOMEM);
+        }
         metadata = &chapter->metadata;
     } else if (stream_id_plus1) {
         st       = s->streams[stream_id_plus1 - 1];
@@ -609,6 +619,10 @@ static int find_and_decode_index(NUTContext *nut)
     GET_V(syncpoint_count, tmp < INT_MAX / 8 && tmp > 0);
     syncpoints   = av_malloc(sizeof(int64_t) *  syncpoint_count);
     has_keyframe = av_malloc(sizeof(int8_t)  * (syncpoint_count + 1));
+    if (!syncpoints || !has_keyframe) {
+        ret = AVERROR(ENOMEM);
+        goto fail;
+    }
     for (i = 0; i < syncpoint_count; i++) {
         syncpoints[i] = ffio_read_varlen(bc);
         if (syncpoints[i] <= 0)
@@ -678,6 +692,20 @@ fail:
     return ret;
 }
 
+static int nut_read_close(AVFormatContext *s)
+{
+    NUTContext *nut = s->priv_data;
+    int i;
+
+    av_freep(&nut->time_base);
+    av_freep(&nut->stream);
+    ff_nut_free_sp(nut);
+    for (i = 1; i < nut->header_count; i++)
+        av_freep(&nut->header[i]);
+
+    return 0;
+}
+
 static int nut_read_header(AVFormatContext *s)
 {
     NUTContext *nut = s->priv_data;
@@ -693,7 +721,7 @@ static int nut_read_header(AVFormatContext *s)
         pos = find_startcode(bc, MAIN_STARTCODE, pos) + 1;
         if (pos < 0 + 1) {
             av_log(s, AV_LOG_ERROR, "No main startcode found.\n");
-            return AVERROR_INVALIDDATA;
+            goto fail;
         }
     } while (decode_main_header(nut) < 0);
 
@@ -703,7 +731,7 @@ static int nut_read_header(AVFormatContext *s)
         pos = find_startcode(bc, STREAM_STARTCODE, pos) + 1;
         if (pos < 0 + 1) {
             av_log(s, AV_LOG_ERROR, "Not all stream headers found.\n");
-            return AVERROR_INVALIDDATA;
+            goto fail;
         }
         if (decode_stream_header(nut) >= 0)
             initialized_stream_count++;
@@ -717,7 +745,7 @@ static int nut_read_header(AVFormatContext *s)
 
         if (startcode == 0) {
             av_log(s, AV_LOG_ERROR, "EOF before video frames\n");
-            return AVERROR_INVALIDDATA;
+            goto fail;
         } else if (startcode == SYNCPOINT_STARTCODE) {
             nut->next_startcode = startcode;
             break;
@@ -740,6 +768,11 @@ static int nut_read_header(AVFormatContext *s)
     ff_metadata_conv_ctx(s, NULL, ff_nut_metadata_conv);
 
     return 0;
+
+fail:
+    nut_read_close(s);
+
+    return AVERROR_INVALIDDATA;
 }
 
 static int decode_frame_header(NUTContext *nut, int64_t *pts, int *stream_id,
@@ -1010,20 +1043,6 @@ static int read_seek(AVFormatContext *s, int stream_index,
         av_log(NULL, AV_LOG_ERROR, "no syncpoint at backptr pos\n");
     for (i = 0; i < s->nb_streams; i++)
         nut->stream[i].skip_until_key_frame = 1;
-
-    return 0;
-}
-
-static int nut_read_close(AVFormatContext *s)
-{
-    NUTContext *nut = s->priv_data;
-    int i;
-
-    av_freep(&nut->time_base);
-    av_freep(&nut->stream);
-    ff_nut_free_sp(nut);
-    for (i = 1; i < nut->header_count; i++)
-        av_freep(&nut->header[i]);
 
     return 0;
 }

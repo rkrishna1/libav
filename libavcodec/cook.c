@@ -64,12 +64,12 @@
 #define SUBBAND_SIZE    20
 #define MAX_SUBPACKETS   5
 
-typedef struct {
+typedef struct cook_gains {
     int *now;
     int *previous;
 } cook_gains;
 
-typedef struct {
+typedef struct COOKSubpacket {
     int                 ch_idx;
     int                 size;
     int                 num_channels;
@@ -1013,14 +1013,14 @@ static int cook_decode_frame(AVCodecContext *avctx, void *data,
 static void dump_cook_context(COOKContext *q)
 {
     //int i=0;
-#define PRINT(a, b) av_dlog(q->avctx, " %s = %d\n", a, b);
-    av_dlog(q->avctx, "COOKextradata\n");
-    av_dlog(q->avctx, "cookversion=%x\n", q->subpacket[0].cookversion);
+#define PRINT(a, b) ff_dlog(q->avctx, " %s = %d\n", a, b);
+    ff_dlog(q->avctx, "COOKextradata\n");
+    ff_dlog(q->avctx, "cookversion=%x\n", q->subpacket[0].cookversion);
     if (q->subpacket[0].cookversion > STEREO) {
         PRINT("js_subband_start", q->subpacket[0].js_subband_start);
         PRINT("js_vlc_bits", q->subpacket[0].js_vlc_bits);
     }
-    av_dlog(q->avctx, "COOKContext\n");
+    ff_dlog(q->avctx, "COOKContext\n");
     PRINT("nb_channels", q->avctx->channels);
     PRINT("bit_rate", q->avctx->bit_rate);
     PRINT("sample_rate", q->avctx->sample_rate);

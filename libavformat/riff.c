@@ -39,6 +39,7 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_H264,         MKTAG('V', '2', '6', '4') }, /* CCTV recordings */
     { AV_CODEC_ID_H264,         MKTAG('G', 'A', 'V', 'C') }, /* GeoVision camera */
     { AV_CODEC_ID_H264,         MKTAG('U', 'M', 'S', 'V') },
+    { AV_CODEC_ID_H264,         MKTAG('t', 's', 'h', 'd') },
     { AV_CODEC_ID_H263,         MKTAG('H', '2', '6', '3') },
     { AV_CODEC_ID_H263,         MKTAG('X', '2', '6', '3') },
     { AV_CODEC_ID_H263,         MKTAG('T', '2', '6', '3') },
@@ -107,6 +108,9 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_MPEG4,        MKTAG('D', 'r', 'e', 'X') },
     { AV_CODEC_ID_MPEG4,        MKTAG('Q', 'M', 'P', '4') }, /* QNAP Systems */
     { AV_CODEC_ID_MPEG4,        MKTAG('P', 'L', 'V', '1') }, /* Pelco DVR MPEG-4 */
+    { AV_CODEC_ID_MPEG4,        MKTAG('G', 'L', 'V', '4') },
+    { AV_CODEC_ID_MPEG4,        MKTAG('G', 'M', 'P', '4') }, /* GeoVision camera */
+    { AV_CODEC_ID_MPEG4,        MKTAG('M', 'N', 'M', '4') }, /* March Networks DVR */
     { AV_CODEC_ID_MSMPEG4V3,    MKTAG('M', 'P', '4', '3') },
     { AV_CODEC_ID_MSMPEG4V3,    MKTAG('D', 'I', 'V', '3') },
     { AV_CODEC_ID_MSMPEG4V3,    MKTAG('M', 'P', 'G', '3') },
@@ -161,10 +165,12 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_MPEG2VIDEO,   MKTAG('E', 'M', '2', 'V') },
     /* Matrox MPEG-2 intra-only */
     { AV_CODEC_ID_MPEG2VIDEO,   MKTAG('M', '7', '0', '1') },
+    { AV_CODEC_ID_MPEG2VIDEO,   MKTAG('M', '7', '0', '5') },
     { AV_CODEC_ID_MPEG2VIDEO,   MKTAG('m', 'p', 'g', 'v') },
     { AV_CODEC_ID_MPEG1VIDEO,   MKTAG('B', 'W', '1', '0') },
     { AV_CODEC_ID_MPEG1VIDEO,   MKTAG('X', 'M', 'P', 'G') }, /* Xing MPEG intra only */
     { AV_CODEC_ID_MJPEG,        MKTAG('M', 'J', 'P', 'G') },
+    { AV_CODEC_ID_MJPEG,        MKTAG('M', 'S', 'C', '2') }, /* Multiscope II */
     { AV_CODEC_ID_MJPEG,        MKTAG('L', 'J', 'P', 'G') },
     { AV_CODEC_ID_MJPEG,        MKTAG('d', 'm', 'b', '1') },
     { AV_CODEC_ID_MJPEG,        MKTAG('m', 'j', 'p', 'a') },
@@ -347,8 +353,11 @@ const AVCodecTag ff_codec_bmp_tags[] = {
     { AV_CODEC_ID_G2M,          MKTAG('G', '2', 'M', '2') },
     { AV_CODEC_ID_G2M,          MKTAG('G', '2', 'M', '3') },
     { AV_CODEC_ID_G2M,          MKTAG('G', '2', 'M', '4') },
+    { AV_CODEC_ID_G2M,          MKTAG('G', '2', 'M', '5') },
     { AV_CODEC_ID_FIC,          MKTAG('F', 'I', 'C', 'V') },
-    { AV_CODEC_ID_PRORES,       MKTAG('A', 'P', 'C', 'N') },
+    { AV_CODEC_ID_HQX,          MKTAG('C', 'H', 'Q', 'X') },
+    { AV_CODEC_ID_TDSC,         MKTAG('T', 'D', 'S', 'C') },
+    { AV_CODEC_ID_HQ_HQA,       MKTAG('C', 'U', 'V', 'C') },
     { AV_CODEC_ID_NONE,         0 }
 };
 

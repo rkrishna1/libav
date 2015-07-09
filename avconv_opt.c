@@ -488,6 +488,9 @@ static void add_input_streams(OptionsContext *o, AVFormatContext *ic)
         ist->ts_scale = 1.0;
         MATCH_PER_STREAM_OPT(ts_scale, dbl, ist->ts_scale, ic, st);
 
+        ist->autorotate = 1;
+        MATCH_PER_STREAM_OPT(autorotate, i, ist->autorotate, ic, st);
+
         MATCH_PER_STREAM_OPT(codec_tags, str, codec_tag, ic, st);
         if (codec_tag) {
             uint32_t tag = strtol(codec_tag, &next, 0);
@@ -1136,6 +1139,10 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc)
             video_enc->rc_override =
                 av_realloc(video_enc->rc_override,
                            sizeof(RcOverride) * (i + 1));
+            if (!video_enc->rc_override) {
+                av_log(NULL, AV_LOG_FATAL, "Could not (re)allocate memory for rc_override.\n");
+                exit_program(1);
+            }
             video_enc->rc_override[i].start_frame = start;
             video_enc->rc_override[i].end_frame   = end;
             if (q > 0) {
@@ -1892,6 +1899,11 @@ static int opt_vstats(void *optctx, const char *opt, const char *arg)
     time_t today2 = time(NULL);
     struct tm *today = localtime(&today2);
 
+    if (!today) { // maybe tomorrow
+        av_log(NULL, AV_LOG_FATAL, "Unable to get current time.\n");
+        exit_program(1);
+    }
+
     snprintf(filename, sizeof(filename), "vstats_%02d%02d%02d.log", today->tm_hour, today->tm_min,
              today->tm_sec);
     return opt_vstats_file(NULL, opt, filename);
@@ -2368,6 +2380,9 @@ const OptionDef options[] = {
     { "hwaccel_device",   OPT_VIDEO | OPT_STRING | HAS_ARG | OPT_EXPERT |
                           OPT_SPEC | OPT_INPUT,                                  { .off = OFFSET(hwaccel_devices) },
         "select a device for HW acceleration" "devicename" },
+    { "autorotate",       HAS_ARG | OPT_BOOL | OPT_SPEC |
+                          OPT_EXPERT | OPT_INPUT,                                { .off = OFFSET(autorotate) },
+        "automatically insert correct rotate filters" },
 
     /* audio options */
     { "aframes",        OPT_AUDIO | HAS_ARG  | OPT_PERFILE | OPT_OUTPUT,           { .func_arg = opt_audio_frames },

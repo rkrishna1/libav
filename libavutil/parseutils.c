@@ -32,12 +32,12 @@
 #include "time_internal.h"
 #include "parseutils.h"
 
-typedef struct {
+typedef struct VideoSizeAbbr {
     const char *abbr;
     int width, height;
 } VideoSizeAbbr;
 
-typedef struct {
+typedef struct VideoRateAbbr {
     const char *abbr;
     AVRational rate;
 } VideoRateAbbr;
@@ -143,7 +143,7 @@ int av_parse_video_rate(AVRational *rate, const char *arg)
     return 0;
 }
 
-typedef struct {
+typedef struct ColorEntry {
     const char *name;            ///< a string representing the name of the color
     uint8_t     rgb_color[3];    ///< RGB values for the color
 } ColorEntry;
@@ -400,65 +400,73 @@ static int date_get_num(const char **pp,
     return val;
 }
 
-static const char *small_strptime(const char *p, const char *fmt, struct tm *dt)
+const char *av_small_strptime(const char *p, const char *fmt, struct tm *dt)
 {
     int c, val;
 
-    for(;;) {
+    while((c = *fmt++)) {
+        if (c != '%') {
+            if (av_isspace(c))
+                for (; *p && av_isspace(*p); p++);
+            else if (*p != c)
+                return NULL;
+            else p++;
+            continue;
+        }
+
         c = *fmt++;
-        if (c == '\0') {
-            return p;
-        } else if (c == '%') {
-            c = *fmt++;
-            switch(c) {
-            case 'H':
-                val = date_get_num(&p, 0, 23, 2);
-                if (val == -1)
-                    return NULL;
-                dt->tm_hour = val;
-                break;
-            case 'M':
-                val = date_get_num(&p, 0, 59, 2);
-                if (val == -1)
-                    return NULL;
-                dt->tm_min = val;
-                break;
-            case 'S':
-                val = date_get_num(&p, 0, 59, 2);
-                if (val == -1)
-                    return NULL;
-                dt->tm_sec = val;
-                break;
-            case 'Y':
-                val = date_get_num(&p, 0, 9999, 4);
-                if (val == -1)
-                    return NULL;
-                dt->tm_year = val - 1900;
-                break;
-            case 'm':
-                val = date_get_num(&p, 1, 12, 2);
-                if (val == -1)
-                    return NULL;
-                dt->tm_mon = val - 1;
-                break;
-            case 'd':
-                val = date_get_num(&p, 1, 31, 2);
-                if (val == -1)
-                    return NULL;
-                dt->tm_mday = val;
-                break;
-            case '%':
-                goto match;
-            default:
+        switch(c) {
+        case 'H':
+            val = date_get_num(&p, 0, 23, 2);
+            if (val == -1)
                 return NULL;
-            }
-        } else {
-        match:
-            if (c != *p)
+            dt->tm_hour = val;
+            break;
+        case 'M':
+            val = date_get_num(&p, 0, 59, 2);
+            if (val == -1)
                 return NULL;
-            p++;
+            dt->tm_min = val;
+            break;
+        case 'S':
+            val = date_get_num(&p, 0, 59, 2);
+            if (val == -1)
+                return NULL;
+            dt->tm_sec = val;
+            break;
+        case 'Y':
+            val = date_get_num(&p, 0, 9999, 4);
+            if (val == -1)
+                return NULL;
+            dt->tm_year = val - 1900;
+            break;
+        case 'm':
+            val = date_get_num(&p, 1, 12, 2);
+            if (val == -1)
+                return NULL;
+            dt->tm_mon = val - 1;
+            break;
+        case 'd':
+            val = date_get_num(&p, 1, 31, 2);
+            if (val == -1)
+                return NULL;
+            dt->tm_mday = val;
+            break;
+        case 'T':
+            p = av_small_strptime(p, "%H:%M:%S", dt);
+            if (!p)
+                return NULL;
+            break;
+        case '%':
+            if (*p++ != '%')
+                return NULL;
+            break;
+        default:
+            return NULL;
         }
     }
+
+    return p;
 }
 
 time_t av_timegm(struct tm *tm)
@@ -518,7 +526,7 @@ int av_parse_time(int64_t *timeval, const char *timestr, int duration)
 
         /* parse the year-month-day part */
         for (i = 0; i < FF_ARRAY_ELEMS(date_fmt); i++) {
-            q = small_strptime(p, date_fmt[i], &dt);
+            q = av_small_strptime(p, date_fmt[i], &dt);
             if (q) {
                 break;
             }
@@ -542,7 +550,7 @@ int av_parse_time(int64_t *timeval, const char *timestr, int duration)
 
         /* parse the hour-minute-second part */
         for (i = 0; i < FF_ARRAY_ELEMS(time_fmt); i++) {
-            q = small_strptime(p, time_fmt[i], &dt);
+            q = av_small_strptime(p, time_fmt[i], &dt);
             if (q) {
                 break;
             }
@@ -554,7 +562,7 @@ int av_parse_time(int64_t *timeval, const char *timestr, int duration)
             ++p;
         }
         /* parse timestr as HH:MM:SS */
-        q = small_strptime(p, time_fmt[0], &dt);
+        q = av_small_strptime(p, time_fmt[0], &dt);
         if (!q) {
             char *o;
             /* parse timestr as S+ */
