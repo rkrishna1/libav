@@ -247,7 +247,7 @@ static av_cold int imc_decode_init(AVCodecContext *avctx)
         return ret;
     }
     ff_bswapdsp_init(&q->bdsp);
-    avpriv_float_dsp_init(&q->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
+    avpriv_float_dsp_init(&q->fdsp, avctx->flags & AV_CODEC_FLAG_BITEXACT);
     avctx->sample_fmt     = AV_SAMPLE_FMT_FLTP;
     avctx->channel_layout = avctx->channels == 1 ? AV_CH_LAYOUT_MONO
                                                  : AV_CH_LAYOUT_STEREO;
@@ -997,7 +997,7 @@ static int imc_decode_frame(AVCodecContext *avctx, void *data,
 
     IMCContext *q = avctx->priv_data;
 
-    LOCAL_ALIGNED_16(uint16_t, buf16, [(IMC_BLOCK_SIZE + FF_INPUT_BUFFER_PADDING_SIZE) / 2]);
+    LOCAL_ALIGNED_16(uint16_t, buf16, [(IMC_BLOCK_SIZE + AV_INPUT_BUFFER_PADDING_SIZE) / 2]);
 
     if (buf_size < IMC_BLOCK_SIZE * avctx->channels) {
         av_log(avctx, AV_LOG_ERROR, "frame too small!\n");
@@ -1054,7 +1054,7 @@ AVCodec ff_imc_decoder = {
     .init           = imc_decode_init,
     .close          = imc_decode_close,
     .decode         = imc_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
 };
@@ -1068,7 +1068,7 @@ AVCodec ff_iac_decoder = {
     .init           = imc_decode_init,
     .close          = imc_decode_close,
     .decode         = imc_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
 };

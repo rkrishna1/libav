@@ -182,8 +182,8 @@ static av_cold int ac3_decode_init(AVCodecContext *avctx)
     ff_mdct_init(&s->imdct_512, 9, 1, 1.0);
     ff_kbd_window_init(s->window, 5.0, 256);
     ff_bswapdsp_init(&s->bdsp);
-    avpriv_float_dsp_init(&s->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
-    ff_ac3dsp_init(&s->ac3dsp, avctx->flags & CODEC_FLAG_BITEXACT);
+    avpriv_float_dsp_init(&s->fdsp, avctx->flags & AV_CODEC_FLAG_BITEXACT);
+    ff_ac3dsp_init(&s->ac3dsp, avctx->flags & AV_CODEC_FLAG_BITEXACT);
     ff_fmt_convert_init(&s->fmt_conv, avctx);
     av_lfg_init(&s->dith_state, 0);
 
@@ -1558,7 +1558,7 @@ AVCodec ff_ac3_decoder = {
     .init           = ac3_decode_init,
     .close          = ac3_decode_end,
     .decode         = ac3_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
     .priv_class     = &ac3_decoder_class,
@@ -1581,7 +1581,7 @@ AVCodec ff_eac3_decoder = {
     .init           = ac3_decode_init,
     .close          = ac3_decode_end,
     .decode         = ac3_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
     .priv_class     = &eac3_decoder_class,

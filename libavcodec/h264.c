@@ -275,7 +275,7 @@ const uint8_t *ff_h264_decode_nal(H264Context *h, H264SliceContext *sl,
     }
 
     av_fast_malloc(&sl->rbsp_buffer, &sl->rbsp_buffer_size,
-                   length + FF_INPUT_BUFFER_PADDING_SIZE);
+                   length + AV_INPUT_BUFFER_PADDING_SIZE);
     dst = sl->rbsp_buffer;
 
     if (!dst)
@@ -304,7 +304,7 @@ const uint8_t *ff_h264_decode_nal(H264Context *h, H264SliceContext *sl,
         dst[di++] = src[si++];
 
 nsc:
-    memset(dst + di, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+    memset(dst + di, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
     *dst_length = di;
     *consumed   = si + 1; // +1 for the header
@@ -830,6 +830,18 @@ static void decode_postinit(H264Context *h, int setup_finished)
 
         *sd->data = h->active_format_description;
         h->sei_reguserdata_afd_present = 0;
+    }
+
+    if (h->a53_caption) {
+        AVFrameSideData *sd = av_frame_new_side_data(cur->f,
+                                                     AV_FRAME_DATA_A53_CC,
+                                                     h->a53_caption_size);
+        if (!sd)
+            return;
+
+        memcpy(sd->data, h->a53_caption, h->a53_caption_size);
+        av_freep(&h->a53_caption);
+        h->a53_caption_size = 0;
     }
 
     // FIXME do something with unavailable reference frames
@@ -1363,7 +1375,7 @@ static int decode_nal_units(H264Context *h, const uint8_t *buf, int buf_size,
     int ret = 0;
 
     h->max_contexts = h->slice_context_count;
-    if (!(avctx->flags2 & CODEC_FLAG2_CHUNKS)) {
+    if (!(avctx->flags2 & AV_CODEC_FLAG2_CHUNKS)) {
         h->current_slice = 0;
         if (!h->first_field)
             h->cur_pic_ptr = NULL;
@@ -1481,7 +1493,7 @@ again:
                 h->cur_pic_ptr->recovered |= !!(h->frame_recovered & FRAME_RECOVERED_IDR);
 
                 if (h->current_slice == 1) {
-                    if (!(avctx->flags2 & CODEC_FLAG2_CHUNKS))
+                    if (!(avctx->flags2 & AV_CODEC_FLAG2_CHUNKS))
                         decode_postinit(h, nal_index >= nals_needed);
 
                     if (h->avctx->hwaccel &&
@@ -1495,7 +1507,7 @@ again:
                     (avctx->skip_frame < AVDISCARD_BIDIR  ||
                      sl->slice_type_nos != AV_PICTURE_TYPE_B) &&
                     (avctx->skip_frame < AVDISCARD_NONKEY ||
-                     sl->slice_type_nos == AV_PICTURE_TYPE_I) &&
+                     h->cur_pic_ptr->f->key_frame) &&
                     avctx->skip_frame < AVDISCARD_ALL) {
                     if (avctx->hwaccel) {
                         ret = avctx->hwaccel->decode_slice(avctx,
@@ -1677,22 +1689,22 @@ out:
         goto out;
     }
 
-    if (!(avctx->flags2 & CODEC_FLAG2_CHUNKS) && !h->cur_pic_ptr) {
+    if (!(avctx->flags2 & AV_CODEC_FLAG2_CHUNKS) && !h->cur_pic_ptr) {
         if (avctx->skip_frame >= AVDISCARD_NONREF)
             return 0;
         av_log(avctx, AV_LOG_ERROR, "no frame!\n");
         return AVERROR_INVALIDDATA;
     }
 
-    if (!(avctx->flags2 & CODEC_FLAG2_CHUNKS) ||
+    if (!(avctx->flags2 & AV_CODEC_FLAG2_CHUNKS) ||
         (h->mb_y >= h->mb_height && h->mb_height)) {
-        if (avctx->flags2 & CODEC_FLAG2_CHUNKS)
+        if (avctx->flags2 & AV_CODEC_FLAG2_CHUNKS)
             decode_postinit(h, 1);
 
         ff_h264_field_end(h, &h->slice_ctx[0], 0);
 
         *got_frame = 0;
-        if (h->next_output_pic && ((avctx->flags & CODEC_FLAG_OUTPUT_CORRUPT) ||
+        if (h->next_output_pic && ((avctx->flags & AV_CODEC_FLAG_OUTPUT_CORRUPT) ||
                                    h->next_output_pic->recovered)) {
             if (!h->next_output_pic->recovered)
                 h->next_output_pic->f->flags |= AV_FRAME_FLAG_CORRUPT;
@@ -1786,9 +1798,9 @@ AVCodec ff_h264_decoder = {
     .init                  = ff_h264_decode_init,
     .close                 = h264_decode_end,
     .decode                = h264_decode_frame,
-    .capabilities          = /*CODEC_CAP_DRAW_HORIZ_BAND |*/ CODEC_CAP_DR1 |
-                             CODEC_CAP_DELAY | CODEC_CAP_SLICE_THREADS |
-                             CODEC_CAP_FRAME_THREADS,
+    .capabilities          = /*AV_CODEC_CAP_DRAW_HORIZ_BAND |*/ AV_CODEC_CAP_DR1 |
+                             AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SLICE_THREADS |
+                             AV_CODEC_CAP_FRAME_THREADS,
     .flush                 = flush_dpb,
     .init_thread_copy      = ONLY_IF_THREADS_ENABLED(decode_init_thread_copy),
     .update_thread_context = ONLY_IF_THREADS_ENABLED(ff_h264_update_thread_context),

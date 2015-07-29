@@ -86,9 +86,11 @@ void avcodec_register_all(void)
     REGISTER_HWACCEL(H264_VDPAU,        h264_vdpau);
     REGISTER_HWACCEL(HEVC_D3D11VA,      hevc_d3d11va);
     REGISTER_HWACCEL(HEVC_DXVA2,        hevc_dxva2);
+    REGISTER_HWACCEL(HEVC_QSV,          hevc_qsv);
     REGISTER_HWACCEL(MPEG1_VDPAU,       mpeg1_vdpau);
     REGISTER_HWACCEL(MPEG2_D3D11VA,     mpeg2_d3d11va);
     REGISTER_HWACCEL(MPEG2_DXVA2,       mpeg2_dxva2);
+    REGISTER_HWACCEL(MPEG2_QSV,         mpeg2_qsv);
     REGISTER_HWACCEL(MPEG2_VAAPI,       mpeg2_vaapi);
     REGISTER_HWACCEL(MPEG2_VDPAU,       mpeg2_vdpau);
     REGISTER_HWACCEL(MPEG4_VAAPI,       mpeg4_vaapi);
@@ -172,6 +174,7 @@ void avcodec_register_all(void)
     REGISTER_DECODER(H264_QSV,          h264_qsv);
     REGISTER_ENCDEC (HAP,               hap);
     REGISTER_DECODER(HEVC,              hevc);
+    REGISTER_DECODER(HEVC_QSV,          hevc_qsv);
     REGISTER_DECODER(HNM4_VIDEO,        hnm4_video);
     REGISTER_DECODER(HQ_HQA,            hq_hqa);
     REGISTER_DECODER(HQX,               hqx);
@@ -203,6 +206,7 @@ void avcodec_register_all(void)
 #endif /* FF_API_XVMC */
     REGISTER_ENCDEC (MPEG1VIDEO,        mpeg1video);
     REGISTER_ENCDEC (MPEG2VIDEO,        mpeg2video);
+    REGISTER_DECODER(MPEG2_QSV,         mpeg2_qsv);
     REGISTER_ENCDEC (MPEG4,             mpeg4);
     REGISTER_DECODER(MSA1,              msa1);
     REGISTER_DECODER(MSMPEG4V1,         msmpeg4v1);
@@ -473,6 +477,7 @@ void avcodec_register_all(void)
     REGISTER_ENCDEC (LIBVPX_VP9,        libvpx_vp9);
     REGISTER_ENCODER(LIBWAVPACK,        libwavpack);
     REGISTER_ENCODER(LIBWEBP,           libwebp);
+    REGISTER_ENCODER(LIBX262,           libx262);
     REGISTER_ENCODER(LIBX264,           libx264);
     REGISTER_ENCODER(LIBX265,           libx265);
     REGISTER_ENCODER(LIBXAVS,           libxavs);
@@ -528,6 +533,7 @@ void avcodec_register_all(void)
     REGISTER_BSF(CHOMP,                 chomp);
     REGISTER_BSF(DUMP_EXTRADATA,        dump_extradata);
     REGISTER_BSF(H264_MP4TOANNEXB,      h264_mp4toannexb);
+    REGISTER_BSF(HEVC_MP4TOANNEXB,      hevc_mp4toannexb);
     REGISTER_BSF(IMX_DUMP_HEADER,       imx_dump_header);
     REGISTER_BSF(MJPEG2JPEG,            mjpeg2jpeg);
     REGISTER_BSF(MJPEGA_DUMP_HEADER,    mjpega_dump_header);

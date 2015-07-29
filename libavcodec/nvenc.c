@@ -478,8 +478,8 @@ static int nvenc_setup_h264_config(AVCodecContext *avctx)
 
     vui->videoFullRangeFlag = avctx->color_range == AVCOL_RANGE_JPEG;
 
-    h264->disableSPSPPS = (avctx->flags & CODEC_FLAG_GLOBAL_HEADER) ? 1 : 0;
-    h264->repeatSPSPPS  = (avctx->flags & CODEC_FLAG_GLOBAL_HEADER) ? 0 : 1;
+    h264->disableSPSPPS = (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) ? 1 : 0;
+    h264->repeatSPSPPS  = (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) ? 0 : 1;
 
     h264->maxNumRefFrames = avctx->refs;
     h264->idrPeriod       = cc->gopLength;
@@ -521,8 +521,8 @@ static int nvenc_setup_hevc_config(AVCodecContext *avctx)
     NV_ENC_CONFIG *cc                      = &ctx->config;
     NV_ENC_CONFIG_HEVC *hevc               = &cc->encodeCodecConfig.hevcConfig;
 
-    hevc->disableSPSPPS = (avctx->flags & CODEC_FLAG_GLOBAL_HEADER) ? 1 : 0;
-    hevc->repeatSPSPPS  = (avctx->flags & CODEC_FLAG_GLOBAL_HEADER) ? 0 : 1;
+    hevc->disableSPSPPS = (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) ? 1 : 0;
+    hevc->repeatSPSPPS  = (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) ? 0 : 1;
 
     hevc->maxNumRefFramesInDPB = avctx->refs;
     hevc->idrPeriod            = cc->gopLength;
@@ -629,7 +629,7 @@ static int nvenc_setup_encoder(AVCodecContext *avctx)
 
     nvenc_setup_rate_control(avctx);
 
-    if (avctx->flags & CODEC_FLAG_INTERLACED_DCT) {
+    if (avctx->flags & AV_CODEC_FLAG_INTERLACED_DCT) {
         ctx->config.frameFieldMode = NV_ENC_PARAMS_FRAME_FIELD_MODE_FIELD;
     } else {
         ctx->config.frameFieldMode = NV_ENC_PARAMS_FRAME_FIELD_MODE_FRAME;
@@ -747,7 +747,7 @@ static int nvenc_setup_extradata(AVCodecContext *avctx)
     NV_ENC_SEQUENCE_PARAM_PAYLOAD payload = { 0 };
     int ret;
 
-    avctx->extradata = av_mallocz(EXTRADATA_SIZE + FF_INPUT_BUFFER_PADDING_SIZE);
+    avctx->extradata = av_mallocz(EXTRADATA_SIZE + AV_INPUT_BUFFER_PADDING_SIZE);
     if (!avctx->extradata)
         return AVERROR(ENOMEM);
 
@@ -770,8 +770,6 @@ av_cold int ff_nvenc_encode_close(AVCodecContext *avctx)
     NVENCContext *ctx               = avctx->priv_data;
     NV_ENCODE_API_FUNCTION_LIST *nv = &ctx->nvel.nvenc_funcs;
     int i;
-
-    av_frame_free(&avctx->coded_frame);
 
     if (ctx->in) {
         for (i = 0; i < ctx->nb_surfaces; ++i) {
@@ -814,14 +812,10 @@ av_cold int ff_nvenc_encode_init(AVCodecContext *avctx)
     if ((ret = nvenc_setup_surfaces(avctx)) < 0)
         return ret;
 
-    if (avctx->flags & CODEC_FLAG_GLOBAL_HEADER) {
+    if (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
         if ((ret = nvenc_setup_extradata(avctx)) < 0)
             return ret;
     }
-
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame)
-        return AVERROR(ENOMEM);
 
     return 0;
 }
@@ -1043,6 +1037,8 @@ static int nvenc_get_frame(AVCodecContext *avctx, AVPacket *pkt)
     switch (params.pictureType) {
     case NV_ENC_PIC_TYPE_IDR:
         pkt->flags |= AV_PKT_FLAG_KEY;
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     case NV_ENC_PIC_TYPE_INTRA_REFRESH:
     case NV_ENC_PIC_TYPE_I:
         avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
@@ -1056,6 +1052,8 @@ static int nvenc_get_frame(AVCodecContext *avctx, AVPacket *pkt)
     case NV_ENC_PIC_TYPE_BI:
         avctx->coded_frame->pict_type = AV_PICTURE_TYPE_BI;
         break;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     }
 
     return 0;
@@ -1090,7 +1088,7 @@ int ff_nvenc_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         params.outputBitstream = out->out;
         params.inputTimeStamp  = frame->pts;
 
-        if (avctx->flags & CODEC_FLAG_INTERLACED_DCT) {
+        if (avctx->flags & AV_CODEC_FLAG_INTERLACED_DCT) {
             if (frame->top_field_first)
                 params.pictureStruct = NV_ENC_PIC_STRUCT_FIELD_TOP_BOTTOM;
             else

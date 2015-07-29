@@ -82,63 +82,11 @@ static const uint8_t diag_scan2x2_inv[2][2] = {
     { 1, 3, },
 };
 
-const uint8_t ff_hevc_diag_scan4x4_x[16] = {
-    0, 0, 1, 0,
-    1, 2, 0, 1,
-    2, 3, 1, 2,
-    3, 2, 3, 3,
-};
-
-const uint8_t ff_hevc_diag_scan4x4_y[16] = {
-    0, 1, 0, 2,
-    1, 0, 3, 2,
-    1, 0, 3, 2,
-    1, 3, 2, 3,
-};
-
 static const uint8_t diag_scan4x4_inv[4][4] = {
     { 0,  2,  5,  9, },
     { 1,  4,  8, 12, },
     { 3,  7, 11, 14, },
     { 6, 10, 13, 15, },
-};
-
-const uint8_t ff_hevc_diag_scan8x8_x[64] = {
-    0, 0, 1, 0,
-    1, 2, 0, 1,
-    2, 3, 0, 1,
-    2, 3, 4, 0,
-    1, 2, 3, 4,
-    5, 0, 1, 2,
-    3, 4, 5, 6,
-    0, 1, 2, 3,
-    4, 5, 6, 7,
-    1, 2, 3, 4,
-    5, 6, 7, 2,
-    3, 4, 5, 6,
-    7, 3, 4, 5,
-    6, 7, 4, 5,
-    6, 7, 5, 6,
-    7, 6, 7, 7,
-};
-
-const uint8_t ff_hevc_diag_scan8x8_y[64] = {
-    0, 1, 0, 2,
-    1, 0, 3, 2,
-    1, 0, 4, 3,
-    2, 1, 0, 5,
-    4, 3, 2, 1,
-    0, 6, 5, 4,
-    3, 2, 1, 0,
-    7, 6, 5, 4,
-    3, 2, 1, 0,
-    7, 6, 5, 4,
-    3, 2, 1, 7,
-    6, 5, 4, 3,
-    2, 7, 6, 5,
-    4, 3, 7, 6,
-    5, 4, 7, 6,
-    5, 7, 6, 7,
 };
 
 static const uint8_t diag_scan8x8_inv[8][8] = {
@@ -383,10 +331,10 @@ static int decode_lt_rps(HEVCContext *s, LongTermRPS *rps, GetBitContext *gb)
     return 0;
 }
 
-static void export_stream_params(AVCodecContext *avctx,
-                                 const HEVCContext *s, const HEVCSPS *sps)
+static void export_stream_params(AVCodecContext *avctx, const HEVCParamSets *ps,
+                                 const HEVCSPS *sps)
 {
-    const HEVCVPS *vps = (const HEVCVPS*)s->ps.vps_list[sps->vps_id]->data;
+    const HEVCVPS *vps = (const HEVCVPS*)ps->vps_list[sps->vps_id]->data;
     unsigned int num = 0, den = 0;
 
     avctx->pix_fmt             = sps->pix_fmt;
@@ -435,12 +383,18 @@ static int set_sps(HEVCContext *s, const HEVCSPS *sps)
     enum AVPixelFormat pix_fmts[HWACCEL_MAX + 2], *fmt = pix_fmts;
     int ret;
 
-    export_stream_params(s->avctx, s, sps);
-
     pic_arrays_free(s);
+    s->ps.sps = NULL;
+    s->ps.vps = NULL;
+
+    if (!sps)
+        return 0;
+
     ret = pic_arrays_init(s, sps);
     if (ret < 0)
         goto fail;
+
+    export_stream_params(s->avctx, &s->ps, sps);
 
     if (sps->pix_fmt == AV_PIX_FMT_YUV420P || sps->pix_fmt == AV_PIX_FMT_YUVJ420P) {
 #if CONFIG_HEVC_DXVA2_HWACCEL
@@ -3017,7 +2971,7 @@ static int hevc_decode_extradata(HEVCContext *s)
     for (i = 0; i < FF_ARRAY_ELEMS(s->ps.sps_list); i++) {
         if (s->ps.sps_list[i]) {
             const HEVCSPS *sps = (const HEVCSPS*)s->ps.sps_list[i]->data;
-            export_stream_params(s->avctx, s, sps);
+            export_stream_params(s->avctx, &s->ps, sps);
             break;
         }
     }
@@ -3106,7 +3060,7 @@ AVCodec ff_hevc_decoder = {
     .flush                 = hevc_decode_flush,
     .update_thread_context = hevc_update_thread_context,
     .init_thread_copy      = hevc_init_thread_copy,
-    .capabilities          = CODEC_CAP_DR1 | CODEC_CAP_DELAY |
-                             CODEC_CAP_FRAME_THREADS,
+    .capabilities          = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
+                             AV_CODEC_CAP_FRAME_THREADS,
     .profiles              = NULL_IF_CONFIG_SMALL(profiles),
 };

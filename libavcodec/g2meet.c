@@ -294,10 +294,10 @@ static int jpg_decode_data(JPGContext *c, int width, int height,
     const int ridx = swapuv ? 2 : 0;
 
     if ((ret = av_reallocp(&c->buf,
-                           src_size + FF_INPUT_BUFFER_PADDING_SIZE)) < 0)
+                           src_size + AV_INPUT_BUFFER_PADDING_SIZE)) < 0)
         return ret;
     jpg_unescape(src, src_size, c->buf, &unesc_size);
-    memset(c->buf + unesc_size, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+    memset(c->buf + unesc_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
     init_get_bits(&gb, c->buf, unesc_size * 8);
 
     width = FFALIGN(width, 16);
@@ -1170,7 +1170,7 @@ static int g2m_init_buffers(G2MContext *c)
         c->synth_tile  = av_mallocz(c->tile_stride      * aligned_height);
         c->jpeg_tile   = av_mallocz(c->tile_stride      * aligned_height);
         c->kempf_buf   = av_mallocz((c->tile_width + 1) * aligned_height +
-                                    FF_INPUT_BUFFER_PADDING_SIZE);
+                                    AV_INPUT_BUFFER_PADDING_SIZE);
         c->kempf_flags = av_mallocz(c->tile_width       * aligned_height);
         if (!c->synth_tile || !c->jpeg_tile ||
             !c->kempf_buf || !c->kempf_flags)
@@ -1612,6 +1612,6 @@ AVCodec ff_g2m_decoder = {
     .init           = g2m_decode_init,
     .close          = g2m_decode_end,
     .decode         = g2m_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

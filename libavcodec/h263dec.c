@@ -152,7 +152,7 @@ static int get_consumed_bytes(MpegEncContext *s, int buf_size)
         /* We would have to scan through the whole buf to handle the weird
          * reordering ... */
         return buf_size;
-    } else if (s->avctx->flags & CODEC_FLAG_TRUNCATED) {
+    } else if (s->avctx->flags & AV_CODEC_FLAG_TRUNCATED) {
         pos -= s->parse_context.last_index;
         // padding is not really read so this might be -1
         if (pos < 0)
@@ -393,7 +393,7 @@ int ff_h263_decode_frame(AVCodecContext *avctx, void *data, int *got_frame,
         return 0;
     }
 
-    if (s->avctx->flags & CODEC_FLAG_TRUNCATED) {
+    if (s->avctx->flags & AV_CODEC_FLAG_TRUNCATED) {
         int next;
 
         if (CONFIG_MPEG4_DECODER && s->codec_id == AV_CODEC_ID_MPEG4) {
@@ -673,8 +673,8 @@ AVCodec ff_h263_decoder = {
     .init           = ff_h263_decode_init,
     .close          = ff_h263_decode_end,
     .decode         = ff_h263_decode_frame,
-    .capabilities   = CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_DR1 |
-                      CODEC_CAP_TRUNCATED | CODEC_CAP_DELAY,
+    .capabilities   = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 |
+                      AV_CODEC_CAP_TRUNCATED | AV_CODEC_CAP_DELAY,
     .flush          = ff_mpeg_flush,
     .pix_fmts       = ff_h263_hwaccel_pixfmt_list_420,
 };

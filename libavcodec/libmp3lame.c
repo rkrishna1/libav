@@ -111,7 +111,7 @@ static av_cold int mp3lame_encode_init(AVCodecContext *avctx)
         lame_set_quality(s->gfp, avctx->compression_level);
 
     /* rate control */
-    if (avctx->flags & CODEC_FLAG_QSCALE) { // VBR
+    if (avctx->flags & AV_CODEC_FLAG_QSCALE) { // VBR
         lame_set_VBR(s->gfp, vbr_default);
         lame_set_VBR_quality(s->gfp, avctx->global_quality / (float)FF_QP2LAMBDA);
     } else {
@@ -159,7 +159,7 @@ static av_cold int mp3lame_encode_init(AVCodecContext *avctx)
     if (ret < 0)
         goto error;
 
-    avpriv_float_dsp_init(&s->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
+    avpriv_float_dsp_init(&s->fdsp, avctx->flags & AV_CODEC_FLAG_BITEXACT);
 
     return 0;
 error:
@@ -303,7 +303,7 @@ AVCodec ff_libmp3lame_encoder = {
     .init                  = mp3lame_encode_init,
     .encode2               = mp3lame_encode_frame,
     .close                 = mp3lame_encode_close,
-    .capabilities          = CODEC_CAP_DELAY | CODEC_CAP_SMALL_LAST_FRAME,
+    .capabilities          = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SMALL_LAST_FRAME,
     .sample_fmts           = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
                                                              AV_SAMPLE_FMT_FLTP,
                                                              AV_SAMPLE_FMT_S16P,

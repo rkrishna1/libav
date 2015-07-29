@@ -243,7 +243,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t *rgba_buf        = NULL;
     uint8_t *top_buf         = NULL;
 
-    is_progressive = !!(avctx->flags & CODEC_FLAG_INTERLACED_DCT);
+    is_progressive = !!(avctx->flags & AV_CODEC_FLAG_INTERLACED_DCT);
     switch (avctx->pix_fmt) {
     case AV_PIX_FMT_RGBA64BE:
         bit_depth = 16;
@@ -297,7 +297,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     enc_row_size    = deflateBound(&s->zstream, row_size);
     max_packet_size = avctx->height * (enc_row_size +
                                        ((enc_row_size + IOBUF_SIZE - 1) / IOBUF_SIZE) * 12)
-                      + FF_MIN_BUFFER_SIZE;
+                      + AV_INPUT_BUFFER_MIN_SIZE;
     if (!pkt->data &&
         (ret = av_new_packet(pkt, max_packet_size)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "Could not allocate output packet of size %d.\n",
@@ -455,12 +455,12 @@ static av_cold int png_enc_init(AVCodecContext *avctx)
 {
     PNGEncContext *s = avctx->priv_data;
 
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame)
-        return AVERROR(ENOMEM);
-
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
     avctx->coded_frame->key_frame = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     ff_huffyuvencdsp_init(&s->hdsp);
 
@@ -473,12 +473,6 @@ static av_cold int png_enc_init(AVCodecContext *avctx)
     return 0;
 }
 
-static av_cold int png_enc_close(AVCodecContext *avctx)
-{
-    av_frame_free(&avctx->coded_frame);
-    return 0;
-}
-
 AVCodec ff_png_encoder = {
     .name           = "png",
     .long_name      = NULL_IF_CONFIG_SMALL("PNG (Portable Network Graphics) image"),
@@ -486,7 +480,6 @@ AVCodec ff_png_encoder = {
     .id             = AV_CODEC_ID_PNG,
     .priv_data_size = sizeof(PNGEncContext),
     .init           = png_enc_init,
-    .close          = png_enc_close,
     .encode2        = encode_frame,
     .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_RGB24, AV_PIX_FMT_RGB32, AV_PIX_FMT_PAL8, AV_PIX_FMT_GRAY8,

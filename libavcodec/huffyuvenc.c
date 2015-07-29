@@ -154,12 +154,15 @@ static av_cold int encode_init(AVCodecContext *avctx)
     avctx->stats_out = av_mallocz(1024*30); // 21*256*3(%llu ) + 3(\n) + 1(0) = 16132
     s->version = 2;
 
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->extradata || !avctx->stats_out || !avctx->coded_frame)
+    if (!avctx->extradata || !avctx->stats_out)
         return AVERROR(ENOMEM);
 
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
     avctx->coded_frame->key_frame = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     switch (avctx->pix_fmt) {
     case AV_PIX_FMT_YUV420P:
@@ -183,10 +186,10 @@ static av_cold int encode_init(AVCodecContext *avctx)
     avctx->bits_per_coded_sample = s->bitstream_bpp;
     s->decorrelate = s->bitstream_bpp >= 24;
     s->predictor = avctx->prediction_method;
-    s->interlaced = avctx->flags&CODEC_FLAG_INTERLACED_ME ? 1 : 0;
+    s->interlaced = avctx->flags & AV_CODEC_FLAG_INTERLACED_ME ? 1 : 0;
     if (avctx->context_model == 1) {
         s->context = avctx->context_model;
-        if (s->flags & (CODEC_FLAG_PASS1|CODEC_FLAG_PASS2)) {
+        if (s->flags & (AV_CODEC_FLAG_PASS1 | AV_CODEC_FLAG_PASS2)) {
             av_log(avctx, AV_LOG_ERROR,
                    "context=1 is not compatible with "
                    "2 pass huffyuv encoding\n");
@@ -305,7 +308,7 @@ static int encode_422_bitstream(HYuvContext *s, int offset, int count)
 
     count /= 2;
 
-    if (s->flags & CODEC_FLAG_PASS1) {
+    if (s->flags & AV_CODEC_FLAG_PASS1) {
         for(i = 0; i < count; i++) {
             LOAD4;
             s->stats[0][y0]++;
@@ -314,7 +317,7 @@ static int encode_422_bitstream(HYuvContext *s, int offset, int count)
             s->stats[2][v0]++;
         }
     }
-    if (s->avctx->flags2 & CODEC_FLAG2_NO_OUTPUT)
+    if (s->avctx->flags2 & AV_CODEC_FLAG2_NO_OUTPUT)
         return 0;
     if (s->context) {
         for (i = 0; i < count; i++) {
@@ -361,13 +364,13 @@ static int encode_gray_bitstream(HYuvContext *s, int count)
 
     count /= 2;
 
-    if (s->flags & CODEC_FLAG_PASS1) {
+    if (s->flags & AV_CODEC_FLAG_PASS1) {
         for (i = 0; i < count; i++) {
             LOAD2;
             STAT2;
         }
     }
-    if (s->avctx->flags2 & CODEC_FLAG2_NO_OUTPUT)
+    if (s->avctx->flags2 & AV_CODEC_FLAG2_NO_OUTPUT)
         return 0;
 
     if (s->context) {
@@ -415,13 +418,13 @@ static inline int encode_bgra_bitstream(HYuvContext *s, int count, int planes)
     if (planes == 4)                                                    \
         put_bits(&s->pb, s->len[2][a], s->bits[2][a]);
 
-    if ((s->flags & CODEC_FLAG_PASS1) &&
-        (s->avctx->flags2 & CODEC_FLAG2_NO_OUTPUT)) {
+    if ((s->flags & AV_CODEC_FLAG_PASS1) &&
+        (s->avctx->flags2 & AV_CODEC_FLAG2_NO_OUTPUT)) {
         for (i = 0; i < count; i++) {
             LOAD_GBRA;
             STAT_BGRA;
         }
-    } else if (s->context || (s->flags & CODEC_FLAG_PASS1)) {
+    } else if (s->context || (s->flags & AV_CODEC_FLAG_PASS1)) {
         for (i = 0; i < count; i++) {
             LOAD_GBRA;
             STAT_BGRA;
@@ -450,7 +453,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     int i, j, size = 0, ret;
 
     if (!pkt->data &&
-        (ret = av_new_packet(pkt, width * height * 3 * 4 + FF_MIN_BUFFER_SIZE)) < 0) {
+        (ret = av_new_packet(pkt, width * height * 3 * 4 + AV_INPUT_BUFFER_MIN_SIZE)) < 0) {
         av_log(avctx, AV_LOG_ERROR, "Error allocating output packet.\n");
         return ret;
     }
@@ -642,7 +645,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     put_bits(&s->pb, 15, 0);
     size /= 4;
 
-    if ((s->flags&CODEC_FLAG_PASS1) && (s->picture_number & 31) == 0) {
+    if ((s->flags & AV_CODEC_FLAG_PASS1) && (s->picture_number & 31) == 0) {
         int j;
         char *p = avctx->stats_out;
         char *end = p + 1024*30;
@@ -657,7 +660,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
     } else
         avctx->stats_out[0] = '\0';
-    if (!(s->avctx->flags2 & CODEC_FLAG2_NO_OUTPUT)) {
+    if (!(s->avctx->flags2 & AV_CODEC_FLAG2_NO_OUTPUT)) {
         flush_put_bits(&s->pb);
         s->bdsp.bswap_buf((uint32_t *) pkt->data, (uint32_t *) pkt->data, size);
     }
@@ -679,8 +682,6 @@ static av_cold int encode_end(AVCodecContext *avctx)
 
     av_freep(&avctx->extradata);
     av_freep(&avctx->stats_out);
-
-    av_frame_free(&avctx->coded_frame);
 
     return 0;
 }

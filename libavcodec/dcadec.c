@@ -1514,7 +1514,7 @@ static av_cold int dca_decode_init(AVCodecContext *avctx)
     s->avctx = avctx;
     dca_init_vlcs();
 
-    avpriv_float_dsp_init(&s->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
+    avpriv_float_dsp_init(&s->fdsp, avctx->flags & AV_CODEC_FLAG_BITEXACT);
     ff_mdct_init(&s->imdct, 6, 1, 1.0);
     ff_synth_filter_init(&s->synth);
     ff_dcadsp_init(&s->dcadsp);
@@ -1577,7 +1577,7 @@ AVCodec ff_dca_decoder = {
     .init            = dca_decode_init,
     .decode          = dca_decode_frame,
     .close           = dca_decode_end,
-    .capabilities    = CODEC_CAP_CHANNEL_CONF | CODEC_CAP_DR1,
+    .capabilities    = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .sample_fmts     = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                        AV_SAMPLE_FMT_NONE },
     .profiles        = NULL_IF_CONFIG_SMALL(profiles),

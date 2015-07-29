@@ -48,7 +48,6 @@ static av_cold int utvideo_encode_close(AVCodecContext *avctx)
     UtvideoContext *c = avctx->priv_data;
     int i;
 
-    av_freep(&avctx->coded_frame);
     av_freep(&c->slice_bits);
     for (i = 0; i < 4; i++)
         av_freep(&c->slice_buffer[i]);
@@ -154,19 +153,11 @@ static av_cold int utvideo_encode_init(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
-    avctx->coded_frame = av_frame_alloc();
-
-    if (!avctx->coded_frame) {
-        av_log(avctx, AV_LOG_ERROR, "Could not allocate frame.\n");
-        utvideo_encode_close(avctx);
-        return AVERROR(ENOMEM);
-    }
-
     /* extradata size is 4 * 32bit */
     avctx->extradata_size = 16;
 
     avctx->extradata = av_mallocz(avctx->extradata_size +
-                                  FF_INPUT_BUFFER_PADDING_SIZE);
+                                  AV_INPUT_BUFFER_PADDING_SIZE);
 
     if (!avctx->extradata) {
         av_log(avctx, AV_LOG_ERROR, "Could not allocate extradata.\n");
@@ -176,7 +167,7 @@ static av_cold int utvideo_encode_init(AVCodecContext *avctx)
 
     for (i = 0; i < c->planes; i++) {
         c->slice_buffer[i] = av_malloc(c->slice_stride * (avctx->height + 2) +
-                                       FF_INPUT_BUFFER_PADDING_SIZE);
+                                       AV_INPUT_BUFFER_PADDING_SIZE);
         if (!c->slice_buffer[i]) {
             av_log(avctx, AV_LOG_ERROR, "Cannot allocate temporary buffer 1.\n");
             utvideo_encode_close(avctx);
@@ -556,7 +547,7 @@ static int utvideo_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     bytestream2_init_writer(&pb, dst, pkt->size);
 
     av_fast_malloc(&c->slice_bits, &c->slice_bits_size,
-                   width * height + FF_INPUT_BUFFER_PADDING_SIZE);
+                   width * height + AV_INPUT_BUFFER_PADDING_SIZE);
 
     if (!c->slice_bits) {
         av_log(avctx, AV_LOG_ERROR, "Cannot allocate temporary buffer 2.\n");
@@ -624,8 +615,12 @@ static int utvideo_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
      * At least currently Ut Video is IDR only.
      * Set flags accordingly.
      */
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     avctx->coded_frame->key_frame = 1;
     avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     pkt->size   = bytestream2_tell_p(&pb);
     pkt->flags |= AV_PKT_FLAG_KEY;

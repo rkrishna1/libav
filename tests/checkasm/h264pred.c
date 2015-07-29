@@ -23,6 +23,7 @@
 #include "libavcodec/avcodec.h"
 #include "libavcodec/h264pred.h"
 #include "libavutil/common.h"
+#include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
 
 static const int codec_ids[4] = { AV_CODEC_ID_H264, AV_CODEC_ID_VP8, AV_CODEC_ID_RV40, AV_CODEC_ID_SVQ3 };
@@ -87,8 +88,7 @@ static const char * const pred8x8_modes[4][11] = {
         [LEFT_DC_PRED8x8] = "left_dc_rv40",
         [TOP_DC_PRED8x8 ] = "top_dc_rv40",
     },
-    { /* SVQ3 */
-    },
+    /* nothing for SVQ3 */
 };
 
 static const char * const pred16x16_modes[4][9] = {
@@ -117,26 +117,26 @@ static const char * const pred16x16_modes[4][9] = {
 static const uint32_t pixel_mask[3] = { 0xffffffff, 0x01ff01ff, 0x03ff03ff };
 
 #define SIZEOF_PIXEL ((bit_depth + 7) / 8)
-#define BUF_SIZE (3*16*17)
+#define BUF_SIZE (3 * 16 * 17)
 
-#define check_pred_func(func, name, mode_name)\
-    (mode_name && ((codec_ids[codec] == AV_CODEC_ID_H264) ?\
-    check_func(func, "pred%s_%s_%d", name, mode_name, bit_depth) :\
-    check_func(func, "pred%s_%s", name, mode_name)))
+#define check_pred_func(func, name, mode_name)                                    \
+    (mode_name && ((codec_ids[codec] == AV_CODEC_ID_H264) ?                       \
+                   check_func(func, "pred%s_%s_%d", name, mode_name, bit_depth) : \
+                   check_func(func, "pred%s_%s", name, mode_name)))
 
-#define randomize_buffers()\
-    do {\
-        uint32_t mask = pixel_mask[bit_depth-8];\
-        int i;\
-        for (i = 0; i < BUF_SIZE; i += 4) {\
-            uint32_t r = rnd() & mask;\
-            AV_WN32A(buf0+i, r);\
-            AV_WN32A(buf1+i, r);\
-        }\
+#define randomize_buffers()                        \
+    do {                                           \
+        uint32_t mask = pixel_mask[bit_depth - 8]; \
+        int i;                                     \
+        for (i = 0; i < BUF_SIZE; i += 4) {        \
+            uint32_t r = rnd() & mask;             \
+            AV_WN32A(buf0 + i, r);                 \
+            AV_WN32A(buf1 + i, r);                 \
+        }                                          \
     } while (0)
 
-#define src0 (buf0 + 4*16) /* Offset to allow room for top and left */
-#define src1 (buf1 + 4*16)
+#define src0 (buf0 + 4 * 16) /* Offset to allow room for top and left */
+#define src1 (buf1 + 4 * 16)
 
 static void check_pred4x4(H264PredContext *h, uint8_t *buf0, uint8_t *buf1,
                           int codec, int chroma_format, int bit_depth)
@@ -233,8 +233,8 @@ void checkasm_check_h264pred(void)
         { check_pred8x8l,  "pred8x8l"  },
     };
 
-    DECLARE_ALIGNED(16, uint8_t, buf0)[BUF_SIZE];
-    DECLARE_ALIGNED(16, uint8_t, buf1)[BUF_SIZE];
+    LOCAL_ALIGNED_16(uint8_t, buf0, [BUF_SIZE]);
+    LOCAL_ALIGNED_16(uint8_t, buf1, [BUF_SIZE]);
     H264PredContext h;
     int test, codec, chroma_format, bit_depth;
 

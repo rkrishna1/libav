@@ -153,12 +153,12 @@ static av_cold int sunrast_encode_init(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame)
-        return AVERROR(ENOMEM);
-
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     avctx->coded_frame->key_frame = 1;
     avctx->coded_frame->pict_type = AV_PICTURE_TYPE_I;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     s->maptype                    = RMT_NONE;
     s->maplength                  = 0;
 
@@ -210,12 +210,6 @@ static int sunrast_encode_frame(AVCodecContext *avctx,  AVPacket *avpkt,
     return 0;
 }
 
-static av_cold int sunrast_encode_close(AVCodecContext *avctx)
-{
-    av_frame_free(&avctx->coded_frame);
-    return 0;
-}
-
 static const AVCodecDefault sunrast_defaults[] = {
      { "coder", "rle" },
      { NULL },
@@ -228,7 +222,6 @@ AVCodec ff_sunrast_encoder = {
     .id             = AV_CODEC_ID_SUNRAST,
     .priv_data_size = sizeof(SUNRASTContext),
     .init           = sunrast_encode_init,
-    .close          = sunrast_encode_close,
     .encode2        = sunrast_encode_frame,
     .defaults       = sunrast_defaults,
     .pix_fmts       = (const enum AVPixelFormat[]){ AV_PIX_FMT_BGR24,

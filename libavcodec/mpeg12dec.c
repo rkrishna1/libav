@@ -824,7 +824,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 #endif /* FF_API_XVMC */
 
         if (s->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
-            if (s->avctx->flags2 & CODEC_FLAG2_FAST) {
+            if (s->avctx->flags2 & AV_CODEC_FLAG2_FAST) {
                 for (i = 0; i < 6; i++)
                     mpeg2_fast_decode_block_intra(s, *s->pblocks[i], i);
             } else {
@@ -1042,7 +1042,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
 #endif /* FF_API_XVMC */
 
             if (s->codec_id == AV_CODEC_ID_MPEG2VIDEO) {
-                if (s->avctx->flags2 & CODEC_FLAG2_FAST) {
+                if (s->avctx->flags2 & AV_CODEC_FLAG2_FAST) {
                     for (i = 0; i < 6; i++) {
                         if (cbp & 32)
                             mpeg2_fast_decode_block_non_intra(s, *s->pblocks[i], i);
@@ -1064,7 +1064,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
                     }
                 }
             } else {
-                if (s->avctx->flags2 & CODEC_FLAG2_FAST) {
+                if (s->avctx->flags2 & AV_CODEC_FLAG2_FAST) {
                     for (i = 0; i < 6; i++) {
                         if (cbp & 32)
                             mpeg1_fast_decode_block_inter(s, *s->pblocks[i], i);
@@ -1405,7 +1405,7 @@ static void mpeg_decode_sequence_extension(Mpeg1Context *s1)
     s->avctx->rc_buffer_size += get_bits(&s->gb, 8) * 1024 * 16 << 10;
 
     s->low_delay = get_bits1(&s->gb);
-    if (s->avctx->flags & CODEC_FLAG_LOW_DELAY)
+    if (s->avctx->flags & AV_CODEC_FLAG_LOW_DELAY)
         s->low_delay = 1;
 
     s1->frame_rate_ext.num = get_bits(&s->gb, 2) + 1;
@@ -2136,7 +2136,7 @@ static int mpeg1_decode_sequence(AVCodecContext *avctx,
     s->codec_id             =
     s->avctx->codec_id      = AV_CODEC_ID_MPEG1VIDEO;
     s->out_format           = FMT_MPEG1;
-    if (s->avctx->flags & CODEC_FLAG_LOW_DELAY)
+    if (s->avctx->flags & AV_CODEC_FLAG_LOW_DELAY)
         s->low_delay = 1;
 
     if (s->avctx->debug & FF_DEBUG_PICT_INFO)
@@ -2635,7 +2635,7 @@ static int mpeg_decode_frame(AVCodecContext *avctx, void *data,
         return buf_size;
     }
 
-    if (s2->avctx->flags & CODEC_FLAG_TRUNCATED) {
+    if (s2->avctx->flags & AV_CODEC_FLAG_TRUNCATED) {
         int next = ff_mpeg1_find_frame_end(&s2->parse_context, buf,
                                            buf_size, NULL);
 
@@ -2701,9 +2701,9 @@ AVCodec ff_mpeg1video_decoder = {
     .init                  = mpeg_decode_init,
     .close                 = mpeg_decode_end,
     .decode                = mpeg_decode_frame,
-    .capabilities          = CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_DR1 |
-                             CODEC_CAP_TRUNCATED | CODEC_CAP_DELAY |
-                             CODEC_CAP_SLICE_THREADS,
+    .capabilities          = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 |
+                             AV_CODEC_CAP_TRUNCATED | AV_CODEC_CAP_DELAY |
+                             AV_CODEC_CAP_SLICE_THREADS,
     .flush                 = flush,
     .update_thread_context = ONLY_IF_THREADS_ENABLED(mpeg_decode_update_thread_context)
 };
@@ -2717,9 +2717,9 @@ AVCodec ff_mpeg2video_decoder = {
     .init           = mpeg_decode_init,
     .close          = mpeg_decode_end,
     .decode         = mpeg_decode_frame,
-    .capabilities   = CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_DR1 |
-                      CODEC_CAP_TRUNCATED | CODEC_CAP_DELAY |
-                      CODEC_CAP_SLICE_THREADS,
+    .capabilities   = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 |
+                      AV_CODEC_CAP_TRUNCATED | AV_CODEC_CAP_DELAY |
+                      AV_CODEC_CAP_SLICE_THREADS,
     .flush          = flush,
     .profiles       = NULL_IF_CONFIG_SMALL(mpeg2_video_profiles),
 };
@@ -2752,8 +2752,9 @@ AVCodec ff_mpeg_xvmc_decoder = {
     .init           = mpeg_mc_decode_init,
     .close          = mpeg_decode_end,
     .decode         = mpeg_decode_frame,
-    .capabilities   = CODEC_CAP_DRAW_HORIZ_BAND | CODEC_CAP_DR1 |
-                      CODEC_CAP_TRUNCATED | CODEC_CAP_HWACCEL | CODEC_CAP_DELAY,
+    .capabilities   = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 |
+                      AV_CODEC_CAP_TRUNCATED | CODEC_CAP_HWACCEL |
+                      AV_CODEC_CAP_DELAY,
     .flush          = flush,
 };
 

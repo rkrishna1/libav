@@ -41,6 +41,8 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
 
+#define DEFAULT_PASS_LOGFILENAME_PREFIX "av2pass"
+
 #define MATCH_PER_STREAM_OPT(name, type, outvar, fmtctx, st)\
 {\
     int i, ret;\
@@ -982,12 +984,12 @@ static OutputStream *new_output_stream(OptionsContext *o, AVFormatContext *oc, e
 
     MATCH_PER_STREAM_OPT(qscale, dbl, qscale, oc, st);
     if (qscale >= 0) {
-        ost->enc_ctx->flags |= CODEC_FLAG_QSCALE;
+        ost->enc_ctx->flags |= AV_CODEC_FLAG_QSCALE;
         ost->enc_ctx->global_quality = FF_QP2LAMBDA * qscale;
     }
 
     if (oc->oformat->flags & AVFMT_GLOBALHEADER)
-        ost->enc_ctx->flags |= CODEC_FLAG_GLOBAL_HEADER;
+        ost->enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
     av_opt_get_int(o->g->sws_opts, "sws_flags", 0, &ost->sws_flags);
 
@@ -1163,9 +1165,9 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc)
         MATCH_PER_STREAM_OPT(pass, i, do_pass, oc, st);
         if (do_pass) {
             if (do_pass == 1) {
-                video_enc->flags |= CODEC_FLAG_PASS1;
+                video_enc->flags |= AV_CODEC_FLAG_PASS1;
             } else {
-                video_enc->flags |= CODEC_FLAG_PASS2;
+                video_enc->flags |= AV_CODEC_FLAG_PASS2;
             }
         }
 
@@ -1173,6 +1175,38 @@ static OutputStream *new_video_stream(OptionsContext *o, AVFormatContext *oc)
         if (ost->logfile_prefix &&
             !(ost->logfile_prefix = av_strdup(ost->logfile_prefix)))
             exit_program(1);
+
+        if (do_pass) {
+            char logfilename[1024];
+            FILE *f;
+
+            snprintf(logfilename, sizeof(logfilename), "%s-%d.log",
+                     ost->logfile_prefix ? ost->logfile_prefix :
+                                           DEFAULT_PASS_LOGFILENAME_PREFIX,
+                     i);
+            if (!strcmp(ost->enc->name, "libx264")) {
+                av_dict_set(&ost->encoder_opts, "stats", logfilename, AV_DICT_DONT_OVERWRITE);
+            } else {
+                if (video_enc->flags & AV_CODEC_FLAG_PASS1) {
+                    f = fopen(logfilename, "wb");
+                    if (!f) {
+                        av_log(NULL, AV_LOG_FATAL, "Cannot write log file '%s' for pass-1 encoding: %s\n",
+                               logfilename, strerror(errno));
+                        exit_program(1);
+                    }
+                    ost->logfile = f;
+                } else {
+                    char  *logbuffer = read_file(logfilename);
+
+                    if (!logbuffer) {
+                        av_log(NULL, AV_LOG_FATAL, "Error reading log file '%s' for pass-2 encoding\n",
+                               logfilename);
+                        exit_program(1);
+                    }
+                    video_enc->stats_in = logbuffer;
+                }
+            }
+        }
 
         MATCH_PER_STREAM_OPT(forced_key_frames, str, ost->forced_keyframes, oc, st);
         if (ost->forced_keyframes)
@@ -1333,8 +1367,7 @@ static void init_output_filter(OutputFilter *ofilter, OptionsContext *o,
 {
     OutputStream *ost;
 
-    switch (avfilter_pad_get_type(ofilter->out_tmp->filter_ctx->output_pads,
-                                  ofilter->out_tmp->pad_idx)) {
+    switch (ofilter->type) {
     case AVMEDIA_TYPE_VIDEO: ost = new_video_stream(o, oc); break;
     case AVMEDIA_TYPE_AUDIO: ost = new_audio_stream(o, oc); break;
     default:
@@ -1355,11 +1388,19 @@ static void init_output_filter(OutputFilter *ofilter, OptionsContext *o,
         exit_program(1);
     }
 
-    if (configure_output_filter(ofilter->graph, ofilter, ofilter->out_tmp) < 0) {
-        av_log(NULL, AV_LOG_FATAL, "Error configuring filter.\n");
-        exit_program(1);
-    }
     avfilter_inout_free(&ofilter->out_tmp);
+}
+
+static int init_complex_filters(void)
+{
+    int i, ret = 0;
+
+    for (i = 0; i < nb_filtergraphs; i++) {
+        ret = init_complex_filtergraph(filtergraphs[i]);
+        if (ret < 0)
+            return ret;
+    }
+    return 0;
 }
 
 static int configure_complex_filters(void)
@@ -1383,11 +1424,6 @@ static int open_output_file(OptionsContext *o, const char *filename)
     InputStream  *ist;
     AVDictionary *unused_opts = NULL;
     AVDictionaryEntry *e = NULL;
-
-    if (configure_complex_filters() < 0) {
-        av_log(NULL, AV_LOG_FATAL, "Error configuring filters.\n");
-        exit_program(1);
-    }
 
     GROW_ARRAY(output_files, nb_output_files);
     of = av_mallocz(sizeof(*of));
@@ -1442,8 +1478,7 @@ static int open_output_file(OptionsContext *o, const char *filename)
             if (!ofilter->out_tmp || ofilter->out_tmp->name)
                 continue;
 
-            switch (avfilter_pad_get_type(ofilter->out_tmp->filter_ctx->output_pads,
-                                          ofilter->out_tmp->pad_idx)) {
+            switch (ofilter->type) {
             case AVMEDIA_TYPE_VIDEO:    o->video_disable    = 1; break;
             case AVMEDIA_TYPE_AUDIO:    o->audio_disable    = 1; break;
             case AVMEDIA_TYPE_SUBTITLE: o->subtitle_disable = 1; break;
@@ -1588,6 +1623,12 @@ loop_end:
         avio_close(pb);
     }
 
+    if (!oc->nb_streams && !(oc->oformat->flags & AVFMT_NOSTREAMS)) {
+        av_dump_format(oc, nb_output_files - 1, oc->filename, 1);
+        av_log(NULL, AV_LOG_ERROR, "Output file #%d does not contain any stream\n", nb_output_files - 1);
+        exit_program(1);
+    }
+
     /* check if all codec options have been used */
     unused_opts = strip_specifiers(o->g->codec_opts);
     for (i = of->ost_index; i < nb_output_streams; i++) {
@@ -1620,6 +1661,17 @@ loop_end:
                option->help ? option->help : "", nb_output_files - 1, filename);
     }
     av_dict_free(&unused_opts);
+
+    /* set the encoding/decoding_needed flags */
+    for (i = of->ost_index; i < nb_output_streams; i++) {
+        OutputStream *ost = output_streams[i];
+
+        ost->encoding_needed = !ost->stream_copy;
+        if (ost->encoding_needed && ost->source_index >= 0) {
+            InputStream *ist = input_streams[ost->source_index];
+            ist->decoding_needed = 1;
+        }
+    }
 
     /* check filename in case of an image number is expected */
     if (oc->oformat->flags & AVFMT_NEEDNUMBER) {
@@ -2181,10 +2233,24 @@ int avconv_parse_options(int argc, char **argv)
         goto fail;
     }
 
+    /* create the complex filtergraphs */
+    ret = init_complex_filters();
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_FATAL, "Error initializing complex filters.\n");
+        goto fail;
+    }
+
     /* open output files */
     ret = open_files(&octx.groups[GROUP_OUTFILE], "output", open_output_file);
     if (ret < 0) {
         av_log(NULL, AV_LOG_FATAL, "Error opening output files: ");
+        goto fail;
+    }
+
+    /* configure the complex filtergraphs */
+    ret = configure_complex_filters();
+    if (ret < 0) {
+        av_log(NULL, AV_LOG_FATAL, "Error configuring complex filters.\n");
         goto fail;
     }
 

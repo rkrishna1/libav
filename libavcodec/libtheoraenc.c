@@ -207,7 +207,7 @@ static av_cold int encode_init(AVCodecContext* avc_context)
     av_pix_fmt_get_chroma_sub_sample(avc_context->pix_fmt,
                                      &h->uv_hshift, &h->uv_vshift);
 
-    if (avc_context->flags & CODEC_FLAG_QSCALE) {
+    if (avc_context->flags & AV_CODEC_FLAG_QSCALE) {
         /* to be constant with the libvorbis implementation, clip global_quality to 0 - 10
            Theora accepts a quality parameter p, which is:
                 * 0 <= p <=63
@@ -238,10 +238,10 @@ static av_cold int encode_init(AVCodecContext* avc_context)
     }
 
     // need to enable 2 pass (via TH_ENCCTL_2PASS_) before encoding headers
-    if (avc_context->flags & CODEC_FLAG_PASS1) {
+    if (avc_context->flags & AV_CODEC_FLAG_PASS1) {
         if (get_stats(avc_context, 0))
             return -1;
-    } else if (avc_context->flags & CODEC_FLAG_PASS2) {
+    } else if (avc_context->flags & AV_CODEC_FLAG_PASS2) {
         if (submit_stats(avc_context))
             return -1;
     }
@@ -264,11 +264,6 @@ static av_cold int encode_init(AVCodecContext* avc_context)
 
     th_comment_clear(&t_comment);
 
-    /* Set up the output AVFrame */
-    avc_context->coded_frame = av_frame_alloc();
-    if (!avc_context->coded_frame)
-        return AVERROR(ENOMEM);
-
     return 0;
 }
 
@@ -283,7 +278,7 @@ static int encode_frame(AVCodecContext* avc_context, AVPacket *pkt,
     // EOS, finish and get 1st pass stats if applicable
     if (!frame) {
         th_encode_packetout(h->t_state, 1, &o_packet);
-        if (avc_context->flags & CODEC_FLAG_PASS1)
+        if (avc_context->flags & AV_CODEC_FLAG_PASS1)
             if (get_stats(avc_context, 1))
                 return -1;
         return 0;
@@ -297,7 +292,7 @@ static int encode_frame(AVCodecContext* avc_context, AVPacket *pkt,
         t_yuv_buffer[i].data   = frame->data[i];
     }
 
-    if (avc_context->flags & CODEC_FLAG_PASS2)
+    if (avc_context->flags & AV_CODEC_FLAG_PASS2)
         if (submit_stats(avc_context))
             return -1;
 
@@ -320,7 +315,7 @@ static int encode_frame(AVCodecContext* avc_context, AVPacket *pkt,
         return -1;
     }
 
-    if (avc_context->flags & CODEC_FLAG_PASS1)
+    if (avc_context->flags & AV_CODEC_FLAG_PASS1)
         if (get_stats(avc_context, 0))
             return -1;
 
@@ -348,8 +343,12 @@ static int encode_frame(AVCodecContext* avc_context, AVPacket *pkt,
     // HACK: assumes no encoder delay, this is true until libtheora becomes
     // multithreaded (which will be disabled unless explicitly requested)
     pkt->pts = pkt->dts = frame->pts;
+#if FF_API_CODED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     avc_context->coded_frame->key_frame = !(o_packet.granulepos & h->keyframe_mask);
-    if (avc_context->coded_frame->key_frame)
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    if (!(o_packet.granulepos & h->keyframe_mask))
         pkt->flags |= AV_PKT_FLAG_KEY;
     *got_packet = 1;
 
@@ -362,7 +361,6 @@ static av_cold int encode_close(AVCodecContext* avc_context)
 
     th_encode_free(h->t_state);
     av_freep(&h->stats);
-    av_freep(&avc_context->coded_frame);
     av_freep(&avc_context->stats_out);
     av_freep(&avc_context->extradata);
     avc_context->extradata_size = 0;
@@ -380,7 +378,7 @@ AVCodec ff_libtheora_encoder = {
     .init           = encode_init,
     .close          = encode_close,
     .encode2        = encode_frame,
-    .capabilities   = CODEC_CAP_DELAY, // needed to get the statsfile summary
+    .capabilities   = AV_CODEC_CAP_DELAY, // needed to get the statsfile summary
     .pix_fmts       = (const enum AVPixelFormat[]){
         AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV444P, AV_PIX_FMT_NONE
     },

@@ -483,7 +483,6 @@ static av_cold int alac_encode_close(AVCodecContext *avctx)
     ff_lpc_end(&s->lpc_ctx);
     av_freep(&avctx->extradata);
     avctx->extradata_size = 0;
-    av_freep(&avctx->coded_frame);
     return 0;
 }
 
@@ -520,7 +519,7 @@ static av_cold int alac_encode_init(AVCodecContext *avctx)
                                                  avctx->channels,
                                                  avctx->bits_per_raw_sample);
 
-    avctx->extradata = av_mallocz(ALAC_EXTRADATA_SIZE + FF_INPUT_BUFFER_PADDING_SIZE);
+    avctx->extradata = av_mallocz(ALAC_EXTRADATA_SIZE + AV_INPUT_BUFFER_PADDING_SIZE);
     if (!avctx->extradata) {
         ret = AVERROR(ENOMEM);
         goto error;
@@ -576,12 +575,6 @@ static av_cold int alac_encode_init(AVCodecContext *avctx)
                "invalid prediction orders: min=%d max=%d\n",
                s->min_prediction_order, s->max_prediction_order);
         ret = AVERROR(EINVAL);
-        goto error;
-    }
-
-    avctx->coded_frame = av_frame_alloc();
-    if (!avctx->coded_frame) {
-        ret = AVERROR(ENOMEM);
         goto error;
     }
 
@@ -650,7 +643,7 @@ AVCodec ff_alac_encoder = {
     .init           = alac_encode_init,
     .encode2        = alac_encode_frame,
     .close          = alac_encode_close,
-    .capabilities   = CODEC_CAP_SMALL_LAST_FRAME,
+    .capabilities   = AV_CODEC_CAP_SMALL_LAST_FRAME,
     .channel_layouts = ff_alac_channel_layouts,
     .sample_fmts    = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S32P,
                                                      AV_SAMPLE_FMT_S16P,

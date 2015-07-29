@@ -67,7 +67,7 @@ static av_cold int ra288_decode_init(AVCodecContext *avctx)
     avctx->channel_layout = AV_CH_LAYOUT_MONO;
     avctx->sample_fmt     = AV_SAMPLE_FMT_FLT;
 
-    avpriv_float_dsp_init(&ractx->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
+    avpriv_float_dsp_init(&ractx->fdsp, avctx->flags & AV_CODEC_FLAG_BITEXACT);
 
     return 0;
 }
@@ -230,5 +230,5 @@ AVCodec ff_ra_288_decoder = {
     .priv_data_size = sizeof(RA288Context),
     .init           = ra288_decode_init,
     .decode         = ra288_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
 };

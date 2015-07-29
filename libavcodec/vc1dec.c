@@ -184,7 +184,7 @@ static void vc1_draw_sprites(VC1Context *v, SpriteData* sd)
     }
     alpha = av_clip_uint16(sd->coefs[1][6]);
 
-    for (plane = 0; plane < (s->avctx->flags & CODEC_FLAG_GRAY ? 1 : 3); plane++) {
+    for (plane = 0; plane < (s->avctx->flags & AV_CODEC_FLAG_GRAY ? 1 : 3); plane++) {
         int width = v->output_width>>!!plane;
 
         for (row = 0; row < v->output_height>>!!plane; row++) {
@@ -302,7 +302,7 @@ static void vc1_sprite_flush(AVCodecContext *avctx)
        wrong but it looks better than doing nothing. */
 
     if (f && f->data[0])
-        for (plane = 0; plane < (s->avctx->flags & CODEC_FLAG_GRAY ? 1 : 3); plane++)
+        for (plane = 0; plane < (s->avctx->flags & AV_CODEC_FLAG_GRAY ? 1 : 3); plane++)
             for (i = 0; i < v->sprite_height>>!!plane; i++)
                 memset(f->data[plane] + i * f->linesize[plane],
                        plane ? 128 : 0, f->linesize[plane]);
@@ -416,7 +416,7 @@ static av_cold int vc1_decode_init(AVCodecContext *avctx)
 
     if (!avctx->extradata_size || !avctx->extradata)
         return -1;
-    if (!(avctx->flags & CODEC_FLAG_GRAY))
+    if (!(avctx->flags & AV_CODEC_FLAG_GRAY))
         avctx->pix_fmt = ff_get_format(avctx, avctx->codec->pix_fmts);
     else
         avctx->pix_fmt = AV_PIX_FMT_GRAY8;
@@ -461,7 +461,7 @@ static av_cold int vc1_decode_init(AVCodecContext *avctx)
             return -1;
         }
 
-        buf2  = av_mallocz(avctx->extradata_size + FF_INPUT_BUFFER_PADDING_SIZE);
+        buf2  = av_mallocz(avctx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
         start = find_next_marker(start, end); // in WVC1 extradata first byte is its size, but can be 0 in mkv
         next  = start;
         for (; next < end; start = next) {
@@ -612,7 +612,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
     //for advanced profile we may need to parse and unescape data
     if (avctx->codec_id == AV_CODEC_ID_VC1 || avctx->codec_id == AV_CODEC_ID_VC1IMAGE) {
         int buf_size2 = 0;
-        buf2 = av_mallocz(buf_size + FF_INPUT_BUFFER_PADDING_SIZE);
+        buf2 = av_mallocz(buf_size + AV_INPUT_BUFFER_PADDING_SIZE);
 
         if (IS_MARKER(AV_RB32(buf))) { /* frame starts with marker and needs to be parsed */
             const uint8_t *start, *end, *next;
@@ -635,7 +635,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                     if (!tmp)
                         goto err;
                     slices = tmp;
-                    slices[n_slices].buf = av_mallocz(buf_size + FF_INPUT_BUFFER_PADDING_SIZE);
+                    slices[n_slices].buf = av_mallocz(buf_size + AV_INPUT_BUFFER_PADDING_SIZE);
                     if (!slices[n_slices].buf)
                         goto err;
                     buf_size3 = vc1_unescape_buffer(start + 4, size,
@@ -660,7 +660,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                     if (!tmp)
                         goto err;
                     slices = tmp;
-                    slices[n_slices].buf = av_mallocz(buf_size + FF_INPUT_BUFFER_PADDING_SIZE);
+                    slices[n_slices].buf = av_mallocz(buf_size + AV_INPUT_BUFFER_PADDING_SIZE);
                     if (!slices[n_slices].buf)
                         goto err;
                     buf_size3 = vc1_unescape_buffer(start + 4, size,
@@ -686,7 +686,7 @@ static int vc1_decode_frame(AVCodecContext *avctx, void *data,
                 if (!tmp)
                     goto err;
                 slices = tmp;
-                slices[n_slices].buf = av_mallocz(buf_size + FF_INPUT_BUFFER_PADDING_SIZE);
+                slices[n_slices].buf = av_mallocz(buf_size + AV_INPUT_BUFFER_PADDING_SIZE);
                 if (!slices[n_slices].buf)
                     goto err;
                 buf_size3 = vc1_unescape_buffer(divider + 4, buf + buf_size - divider - 4, slices[n_slices].buf);
@@ -978,7 +978,7 @@ AVCodec ff_vc1_decoder = {
     .close          = ff_vc1_decode_end,
     .decode         = vc1_decode_frame,
     .flush          = ff_mpeg_flush,
-    .capabilities   = CODEC_CAP_DR1 | CODEC_CAP_DELAY,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .pix_fmts       = vc1_hwaccel_pixfmt_list_420,
     .profiles       = NULL_IF_CONFIG_SMALL(profiles)
 };
@@ -994,7 +994,7 @@ AVCodec ff_wmv3_decoder = {
     .close          = ff_vc1_decode_end,
     .decode         = vc1_decode_frame,
     .flush          = ff_mpeg_flush,
-    .capabilities   = CODEC_CAP_DR1 | CODEC_CAP_DELAY,
+    .capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .pix_fmts       = vc1_hwaccel_pixfmt_list_420,
     .profiles       = NULL_IF_CONFIG_SMALL(profiles)
 };
@@ -1010,7 +1010,7 @@ AVCodec ff_wmv3image_decoder = {
     .init           = vc1_decode_init,
     .close          = ff_vc1_decode_end,
     .decode         = vc1_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .flush          = vc1_sprite_flush,
     .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P,
@@ -1029,7 +1029,7 @@ AVCodec ff_vc1image_decoder = {
     .init           = vc1_decode_init,
     .close          = ff_vc1_decode_end,
     .decode         = vc1_decode_frame,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .flush          = vc1_sprite_flush,
     .pix_fmts       = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_YUV420P,

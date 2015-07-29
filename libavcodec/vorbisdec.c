@@ -1015,7 +1015,7 @@ static av_cold int vorbis_decode_init(AVCodecContext *avctx)
 
     vc->avctx = avctx;
     ff_vorbisdsp_init(&vc->dsp);
-    avpriv_float_dsp_init(&vc->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
+    avpriv_float_dsp_init(&vc->fdsp, avctx->flags & AV_CODEC_FLAG_BITEXACT);
 
     avctx->sample_fmt = AV_SAMPLE_FMT_FLTP;
 
@@ -1770,7 +1770,7 @@ AVCodec ff_vorbis_decoder = {
     .close           = vorbis_decode_close,
     .decode          = vorbis_decode_frame,
     .flush           = vorbis_decode_flush,
-    .capabilities    = CODEC_CAP_DR1,
+    .capabilities    = AV_CODEC_CAP_DR1,
     .channel_layouts = ff_vorbis_channel_layouts,
     .sample_fmts     = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                        AV_SAMPLE_FMT_NONE },

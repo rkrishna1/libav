@@ -1908,7 +1908,7 @@ static int audio_decode_frame(VideoState *is, double *pts_ptr)
 
             if (!got_frame) {
                 /* stop sending empty packets if the decoder is finished */
-                if (!pkt_temp->data && dec->codec->capabilities & CODEC_CAP_DELAY)
+                if (!pkt_temp->data && (dec->codec->capabilities & AV_CODEC_CAP_DELAY))
                     flush_complete = 1;
                 continue;
             }
@@ -2089,7 +2089,8 @@ static int stream_component_open(VideoState *is, int stream_index)
     avctx->skip_loop_filter  = skip_loop_filter;
     avctx->error_concealment = error_concealment;
 
-    if (fast)   avctx->flags2 |= CODEC_FLAG2_FAST;
+    if (fast)
+        avctx->flags2 |= AV_CODEC_FLAG2_FAST;
 
     if (!av_dict_get(opts, "threads", NULL, 0))
         av_dict_set(&opts, "threads", "auto", 0);
@@ -2469,7 +2470,7 @@ static int decode_thread(void *arg)
                 packet_queue_put(&is->videoq, pkt);
             }
             if (is->audio_stream >= 0 &&
-                is->audio_st->codec->codec->capabilities & CODEC_CAP_DELAY) {
+                (is->audio_st->codec->codec->capabilities & AV_CODEC_CAP_DELAY)) {
                 av_init_packet(pkt);
                 pkt->data = NULL;
                 pkt->size = 0;

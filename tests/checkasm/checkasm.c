@@ -53,11 +53,20 @@
 #endif
 
 /* List of tests to invoke */
-static void (* const tests[])(void) = {
-#if CONFIG_H264PRED
-    checkasm_check_h264pred,
+static const struct {
+    const char *name;
+    void (*func)(void);
+} tests[] = {
+#if CONFIG_BSWAPDSP
+    { "bswapdsp", checkasm_check_bswapdsp },
 #endif
-    NULL
+#if CONFIG_H264PRED
+    { "h264pred", checkasm_check_h264pred },
+#endif
+#if CONFIG_H264QPEL
+    { "h264qpel", checkasm_check_h264qpel },
+#endif
+    { NULL }
 };
 
 /* List of cpu flags to check */
@@ -66,7 +75,21 @@ static const struct {
     const char *suffix;
     int flag;
 } cpus[] = {
-#if ARCH_X86
+#if   ARCH_AARCH64
+    { "ARMV8",    "armv8",    AV_CPU_FLAG_ARMV8 },
+    { "NEON",     "neon",     AV_CPU_FLAG_NEON },
+#elif ARCH_ARM
+    { "ARMV5TE",  "armv5te",  AV_CPU_FLAG_ARMV5TE },
+    { "ARMV6",    "armv6",    AV_CPU_FLAG_ARMV6 },
+    { "ARMV6T2",  "armv6t2",  AV_CPU_FLAG_ARMV6T2 },
+    { "VFP",      "vfp",      AV_CPU_FLAG_VFP },
+    { "VFPV3",    "vfp3",     AV_CPU_FLAG_VFPV3 },
+    { "NEON",     "neon",     AV_CPU_FLAG_NEON },
+#elif ARCH_PPC
+    { "ALTIVEC",  "altivec",  AV_CPU_FLAG_ALTIVEC },
+    { "VSX",      "vsx",      AV_CPU_FLAG_VSX },
+    { "POWER8",   "power8",   AV_CPU_FLAG_POWER8 },
+#elif ARCH_X86
     { "MMX",      "mmx",      AV_CPU_FLAG_MMX|AV_CPU_FLAG_CMOV },
     { "MMXEXT",   "mmxext",   AV_CPU_FLAG_MMXEXT },
     { "3DNOW",    "3dnow",    AV_CPU_FLAG_3DNOW },
@@ -107,6 +130,7 @@ static struct {
     CheckasmFunc *funcs;
     CheckasmFunc *current_func;
     CheckasmFuncVersion *current_func_ver;
+    const char *current_test_name;
     const char *bench_pattern;
     int bench_pattern_len;
     int num_checked;
@@ -294,8 +318,10 @@ static void check_cpu_flag(const char *name, int flag)
         int i;
 
         state.cpu_flag_name = name;
-        for (i = 0; tests[i]; i++)
-            tests[i]();
+        for (i = 0; tests[i].func; i++) {
+            state.current_test_name = tests[i].name;
+            tests[i].func();
+        }
     }
 }
 
@@ -312,9 +338,9 @@ int main(int argc, char *argv[])
 {
     int i, seed, ret = 0;
 
-    if (!tests[0] || !cpus[0].flag) {
+    if (!tests[0].func || !cpus[0].flag) {
         fprintf(stderr, "checkasm: no tests to perform\n");
-        return 1;
+        return 0;
     }
 
     if (argc > 1 && !strncmp(argv[1], "--bench", 7)) {
@@ -444,19 +470,15 @@ void checkasm_report(const char *name, ...)
     static int prev_checked, prev_failed, max_length;
 
     if (state.num_checked > prev_checked) {
+        int pad_length = max_length + 4;
+        va_list arg;
+
         print_cpu_name();
-
-        if (*name) {
-            int pad_length = max_length;
-            va_list arg;
-
-            fprintf(stderr, " - ");
-            va_start(arg, name);
-            pad_length -= vfprintf(stderr, name, arg);
-            va_end(arg);
-            fprintf(stderr, "%*c", FFMAX(pad_length, 0) + 2, '[');
-        } else
-            fprintf(stderr, " - %-*s [", max_length, state.current_func->name);
+        pad_length -= fprintf(stderr, " - %s.", state.current_test_name);
+        va_start(arg, name);
+        pad_length -= vfprintf(stderr, name, arg);
+        va_end(arg);
+        fprintf(stderr, "%*c", FFMAX(pad_length, 0) + 2, '[');
 
         if (state.num_failed == prev_failed)
             color_printf(COLOR_GREEN, "OK");
@@ -467,16 +489,13 @@ void checkasm_report(const char *name, ...)
         prev_checked = state.num_checked;
         prev_failed  = state.num_failed;
     } else if (!state.cpu_flag) {
-        int length;
-
         /* Calculate the amount of padding required to make the output vertically aligned */
-        if (*name) {
-            va_list arg;
-            va_start(arg, name);
-            length = vsnprintf(NULL, 0, name, arg);
-            va_end(arg);
-        } else
-            length = strlen(state.current_func->name);
+        int length = strlen(state.current_test_name);
+        va_list arg;
+
+        va_start(arg, name);
+        length += vsnprintf(NULL, 0, name, arg);
+        va_end(arg);
 
         if (length > max_length)
             max_length = length;

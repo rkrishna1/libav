@@ -1885,7 +1885,7 @@ static int try_decode_frame(AVStream *st, AVPacket *avpkt,
            ret >= 0 &&
            (!has_codec_parameters(st) || !has_decode_delay_been_guessed(st) ||
             (!st->codec_info_nb_frames &&
-             st->codec->codec->capabilities & CODEC_CAP_CHANNEL_CONF))) {
+             (st->codec->codec->capabilities & AV_CODEC_CAP_CHANNEL_CONF)))) {
         got_picture = 0;
         switch (st->codec->codec_type) {
         case AVMEDIA_TYPE_VIDEO:
@@ -2241,7 +2241,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
             if (i > 0 && i < FF_MAX_EXTRADATA_SIZE) {
                 st->codec->extradata_size = i;
                 st->codec->extradata = av_mallocz(st->codec->extradata_size +
-                                                  FF_INPUT_BUFFER_PADDING_SIZE);
+                                                  AV_INPUT_BUFFER_PADDING_SIZE);
                 if (!st->codec->extradata)
                     return AVERROR(ENOMEM);
                 memcpy(st->codec->extradata, pkt->data,
@@ -2254,7 +2254,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
          * it takes longer and uses more memory. For MPEG-4, we need to
          * decompress for QuickTime.
          *
-         * If CODEC_CAP_CHANNEL_CONF is set this will force decoding of at
+         * If AV_CODEC_CAP_CHANNEL_CONF is set this will force decoding of at
          * least one frame of codec data, this makes sure the codec initializes
          * the channel configuration and does not only trust the values from
          * the container. */
@@ -3083,7 +3083,7 @@ int ff_generate_avci_extradata(AVStream *st)
 
     av_freep(&st->codec->extradata);
     st->codec->extradata_size = 0;
-    st->codec->extradata      = av_mallocz(size + FF_INPUT_BUFFER_PADDING_SIZE);
+    st->codec->extradata      = av_mallocz(size + AV_INPUT_BUFFER_PADDING_SIZE);
     if (!st->codec->extradata)
         return AVERROR(ENOMEM);
 

@@ -104,7 +104,7 @@ static void add_audio_stream(OutputStream *ost, AVFormatContext *oc,
 
     // some formats want stream headers to be separate
     if (oc->oformat->flags & AVFMT_GLOBALHEADER)
-        c->flags |= CODEC_FLAG_GLOBAL_HEADER;
+        c->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
     /* initialize sample format conversion;
      * to simplify the code, we always pass the data through lavr, even
@@ -178,7 +178,7 @@ static void open_audio(AVFormatContext *oc, OutputStream *ost)
     /* increment frequency by 110 Hz per second */
     ost->tincr2 = 2 * M_PI * 110.0 / c->sample_rate / c->sample_rate;
 
-    if (c->codec->capabilities & CODEC_CAP_VARIABLE_FRAME_SIZE)
+    if (c->codec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE)
         nb_samples = 10000;
     else
         nb_samples = c->frame_size;
@@ -358,7 +358,7 @@ static void add_video_stream(OutputStream *ost, AVFormatContext *oc,
     }
     /* Some formats want stream headers to be separate. */
     if (oc->oformat->flags & AVFMT_GLOBALHEADER)
-        c->flags |= CODEC_FLAG_GLOBAL_HEADER;
+        c->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 }
 
 static AVFrame *alloc_picture(enum AVPixelFormat pix_fmt, int width, int height)

@@ -979,12 +979,12 @@ static void print_codec(const AVCodec *c)
 
     if (c->type == AVMEDIA_TYPE_VIDEO) {
         printf("    Threading capabilities: ");
-        switch (c->capabilities & (CODEC_CAP_FRAME_THREADS |
-                                   CODEC_CAP_SLICE_THREADS)) {
-        case CODEC_CAP_FRAME_THREADS |
-             CODEC_CAP_SLICE_THREADS: printf("frame and slice"); break;
-        case CODEC_CAP_FRAME_THREADS: printf("frame");           break;
-        case CODEC_CAP_SLICE_THREADS: printf("slice");           break;
+        switch (c->capabilities & (AV_CODEC_CAP_FRAME_THREADS |
+                                   AV_CODEC_CAP_SLICE_THREADS)) {
+        case AV_CODEC_CAP_FRAME_THREADS |
+             AV_CODEC_CAP_SLICE_THREADS: printf("frame and slice"); break;
+        case AV_CODEC_CAP_FRAME_THREADS: printf("frame");           break;
+        case AV_CODEC_CAP_SLICE_THREADS: printf("slice");           break;
         default:                      printf("no");              break;
         }
         printf("\n");
@@ -1115,9 +1115,9 @@ static void print_codecs(int encoder)
 
         while ((codec = next_codec_for_id(desc->id, codec, encoder))) {
             printf("%c", get_media_type_char(desc->type));
-            printf((codec->capabilities & CODEC_CAP_FRAME_THREADS) ? "F" : ".");
-            printf((codec->capabilities & CODEC_CAP_SLICE_THREADS) ? "S" : ".");
-            printf((codec->capabilities & CODEC_CAP_EXPERIMENTAL)  ? "X" : ".");
+            printf((codec->capabilities & AV_CODEC_CAP_FRAME_THREADS) ? "F" : ".");
+            printf((codec->capabilities & AV_CODEC_CAP_SLICE_THREADS) ? "S" : ".");
+            printf((codec->capabilities & AV_CODEC_CAP_EXPERIMENTAL)  ? "X" : ".");
 
             printf(" %-20s %s", codec->name, codec->long_name ? codec->long_name : "");
             if (strcmp(codec->name, desc->name))
@@ -1394,61 +1394,6 @@ int read_yesno(void)
         c = getchar();
 
     return yesno;
-}
-
-int cmdutils_read_file(const char *filename, char **bufptr, size_t *size)
-{
-    int ret;
-    FILE *f = fopen(filename, "rb");
-
-    if (!f) {
-        av_log(NULL, AV_LOG_ERROR, "Cannot read file '%s': %s\n", filename,
-               strerror(errno));
-        return AVERROR(errno);
-    }
-
-    ret = fseek(f, 0, SEEK_END);
-    if (ret == -1) {
-        ret = AVERROR(errno);
-        goto out;
-    }
-
-    ret = ftell(f);
-    if (ret < 0) {
-        ret = AVERROR(errno);
-        goto out;
-    }
-    *size = ret;
-
-    ret = fseek(f, 0, SEEK_SET);
-    if (ret == -1) {
-        ret = AVERROR(errno);
-        goto out;
-    }
-
-    *bufptr = av_malloc(*size + 1);
-    if (!*bufptr) {
-        av_log(NULL, AV_LOG_ERROR, "Could not allocate file buffer\n");
-        ret = AVERROR(ENOMEM);
-        goto out;
-    }
-    ret = fread(*bufptr, 1, *size, f);
-    if (ret < *size) {
-        av_free(*bufptr);
-        if (ferror(f)) {
-            av_log(NULL, AV_LOG_ERROR, "Error while reading file '%s': %s\n",
-                   filename, strerror(errno));
-            ret = AVERROR(errno);
-        } else
-            ret = AVERROR_EOF;
-    } else {
-        ret = 0;
-        (*bufptr)[(*size)++] = '\0';
-    }
-
-out:
-    fclose(f);
-    return ret;
 }
 
 void init_pts_correction(PtsCorrectionContext *ctx)

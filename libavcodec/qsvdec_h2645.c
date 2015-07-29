@@ -1,5 +1,5 @@
 /*
- * Intel MediaSDK QSV based H.264 decoder
+ * Intel MediaSDK QSV based H.264 / HEVC decoder
  *
  * copyright (c) 2013 Luca Barbato
  * copyright (c) 2015 Anton Khirnov
@@ -37,14 +37,16 @@
 #include "qsvdec.h"
 #include "qsv.h"
 
-typedef struct QSVH264Context {
+enum LoadPlugin {
+    LOAD_PLUGIN_NONE,
+    LOAD_PLUGIN_HEVC_SW,
+};
+
+typedef struct QSVH2645Context {
     AVClass *class;
     QSVContext qsv;
 
-    // the internal parser and codec context for parsing the data
-    AVCodecParserContext *parser;
-    AVCodecContext *avctx_internal;
-    enum AVPixelFormat orig_pix_fmt;
+    int load_plugin;
 
     // the filter for converting to Annex B
     AVBitStreamFilterContext *bsf;
@@ -54,9 +56,9 @@ typedef struct QSVH264Context {
     AVPacket input_ref;
     AVPacket pkt_filtered;
     uint8_t *filtered_data;
-} QSVH264Context;
+} QSVH2645Context;
 
-static void qsv_clear_buffers(QSVH264Context *s)
+static void qsv_clear_buffers(QSVH2645Context *s)
 {
     AVPacket pkt;
     while (av_fifo_size(s->packet_fifo) >= sizeof(pkt)) {
@@ -72,7 +74,7 @@ static void qsv_clear_buffers(QSVH264Context *s)
 
 static av_cold int qsv_decode_close(AVCodecContext *avctx)
 {
-    QSVH264Context *s = avctx->priv_data;
+    QSVH2645Context *s = avctx->priv_data;
 
     ff_qsv_decode_close(&s->qsv);
 
@@ -81,18 +83,29 @@ static av_cold int qsv_decode_close(AVCodecContext *avctx)
     av_fifo_free(s->packet_fifo);
 
     av_bitstream_filter_close(s->bsf);
-    av_parser_close(s->parser);
-    avcodec_free_context(&s->avctx_internal);
 
     return 0;
 }
 
 static av_cold int qsv_decode_init(AVCodecContext *avctx)
 {
-    QSVH264Context *s = avctx->priv_data;
+    QSVH2645Context *s = avctx->priv_data;
     int ret;
 
-    s->orig_pix_fmt = AV_PIX_FMT_NONE;
+    if (avctx->codec_id == AV_CODEC_ID_HEVC && s->load_plugin != LOAD_PLUGIN_NONE) {
+        static const char *uid_hevcenc_sw = "15dd936825ad475ea34e35f3f54217a6";
+
+        if (s->qsv.load_plugins[0]) {
+            av_log(avctx, AV_LOG_WARNING,
+                   "load_plugins is not empty, but load_plugin is not set to 'none'."
+                   "The load_plugin value will be ignored.\n");
+        } else {
+            av_freep(&s->qsv.load_plugins);
+            s->qsv.load_plugins = av_strdup(uid_hevcenc_sw);
+            if (!s->qsv.load_plugins)
+                return AVERROR(ENOMEM);
+        }
+    }
 
     s->packet_fifo = av_fifo_alloc(sizeof(AVPacket));
     if (!s->packet_fifo) {
@@ -100,35 +113,14 @@ static av_cold int qsv_decode_init(AVCodecContext *avctx)
         goto fail;
     }
 
-    s->bsf = av_bitstream_filter_init("h264_mp4toannexb");
+    if (avctx->codec_id == AV_CODEC_ID_H264)
+        s->bsf = av_bitstream_filter_init("h264_mp4toannexb");
+    else
+        s->bsf = av_bitstream_filter_init("hevc_mp4toannexb");
     if (!s->bsf) {
         ret = AVERROR(ENOMEM);
         goto fail;
     }
-
-    s->avctx_internal = avcodec_alloc_context3(NULL);
-    if (!s->avctx_internal) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-
-    if (avctx->extradata) {
-        s->avctx_internal->extradata = av_mallocz(avctx->extradata_size + FF_INPUT_BUFFER_PADDING_SIZE);
-        if (!s->avctx_internal->extradata) {
-            ret = AVERROR(ENOMEM);
-            goto fail;
-        }
-        memcpy(s->avctx_internal->extradata, avctx->extradata,
-               avctx->extradata_size);
-        s->avctx_internal->extradata_size = avctx->extradata_size;
-    }
-
-    s->parser = av_parser_init(AV_CODEC_ID_H264);
-    if (!s->parser) {
-        ret = AVERROR(ENOMEM);
-        goto fail;
-    }
-    s->parser->flags |= PARSER_FLAG_COMPLETE_FRAMES;
 
     s->qsv.iopattern = MFX_IOPATTERN_OUT_SYSTEM_MEMORY;
 
@@ -138,79 +130,10 @@ fail:
     return ret;
 }
 
-static int qsv_process_data(AVCodecContext *avctx, AVFrame *frame,
-                            int *got_frame, AVPacket *pkt)
-{
-    QSVH264Context *s = avctx->priv_data;
-    uint8_t *dummy_data;
-    int dummy_size;
-    int ret;
-
-    /* we assume the packets are already split properly and want
-     * just the codec parameters here */
-    av_parser_parse2(s->parser, s->avctx_internal,
-                     &dummy_data, &dummy_size,
-                     pkt->data, pkt->size, pkt->pts, pkt->dts,
-                     pkt->pos);
-
-    /* TODO: flush delayed frames on reinit */
-    if (s->parser->format       != s->orig_pix_fmt    ||
-        s->parser->coded_width  != avctx->coded_width ||
-        s->parser->coded_height != avctx->coded_height) {
-        mfxSession session = NULL;
-
-        enum AVPixelFormat pix_fmts[3] = { AV_PIX_FMT_QSV,
-                                           AV_PIX_FMT_NONE,
-                                           AV_PIX_FMT_NONE };
-        enum AVPixelFormat qsv_format;
-
-        qsv_format = ff_qsv_map_pixfmt(s->parser->format);
-        if (qsv_format < 0) {
-            av_log(avctx, AV_LOG_ERROR,
-                   "Only 8-bit YUV420 streams are supported.\n");
-            ret = AVERROR(ENOSYS);
-            goto reinit_fail;
-        }
-
-        s->orig_pix_fmt     = s->parser->format;
-        avctx->pix_fmt      = pix_fmts[1] = qsv_format;
-        avctx->width        = s->parser->width;
-        avctx->height       = s->parser->height;
-        avctx->coded_width  = s->parser->coded_width;
-        avctx->coded_height = s->parser->coded_height;
-        avctx->level        = s->avctx_internal->level;
-        avctx->profile      = s->avctx_internal->profile;
-
-        ret = ff_get_format(avctx, pix_fmts);
-        if (ret < 0)
-            goto reinit_fail;
-
-        avctx->pix_fmt = ret;
-
-        if (avctx->hwaccel_context) {
-            AVQSVContext *user_ctx = avctx->hwaccel_context;
-            session               = user_ctx->session;
-            s->qsv.iopattern      = user_ctx->iopattern;
-            s->qsv.ext_buffers    = user_ctx->ext_buffers;
-            s->qsv.nb_ext_buffers = user_ctx->nb_ext_buffers;
-        }
-
-        ret = ff_qsv_decode_init(avctx, &s->qsv, session);
-        if (ret < 0)
-            goto reinit_fail;
-    }
-
-    return ff_qsv_decode(avctx, &s->qsv, frame, got_frame, &s->pkt_filtered);
-
-reinit_fail:
-    s->orig_pix_fmt = s->parser->format = avctx->pix_fmt = AV_PIX_FMT_NONE;
-    return ret;
-}
-
 static int qsv_decode_frame(AVCodecContext *avctx, void *data,
                             int *got_frame, AVPacket *avpkt)
 {
-    QSVH264Context *s = avctx->priv_data;
+    QSVH2645Context *s = avctx->priv_data;
     AVFrame *frame    = data;
     int ret;
 
@@ -239,7 +162,7 @@ static int qsv_decode_frame(AVCodecContext *avctx, void *data,
 
             /* no more data */
             if (av_fifo_size(s->packet_fifo) < sizeof(AVPacket))
-                return avpkt->size ? avpkt->size : ff_qsv_decode(avctx, &s->qsv, frame, got_frame, avpkt);
+                return avpkt->size ? avpkt->size : ff_qsv_process_data(avctx, &s->qsv, frame, got_frame, avpkt);
 
             if (s->filtered_data != s->input_ref.data)
                 av_freep(&s->filtered_data);
@@ -259,7 +182,7 @@ static int qsv_decode_frame(AVCodecContext *avctx, void *data,
             s->pkt_filtered.size = size;
         }
 
-        ret = qsv_process_data(avctx, frame, got_frame, &s->pkt_filtered);
+        ret = ff_qsv_process_data(avctx, &s->qsv, frame, got_frame, &s->pkt_filtered);
         if (ret < 0)
             return ret;
 
@@ -272,12 +195,58 @@ static int qsv_decode_frame(AVCodecContext *avctx, void *data,
 
 static void qsv_decode_flush(AVCodecContext *avctx)
 {
-    QSVH264Context *s = avctx->priv_data;
+    QSVH2645Context *s = avctx->priv_data;
 
     qsv_clear_buffers(s);
-    s->orig_pix_fmt = AV_PIX_FMT_NONE;
+    ff_qsv_decode_flush(avctx, &s->qsv);
 }
 
+#define OFFSET(x) offsetof(QSVH2645Context, x)
+#define VD AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
+
+#if CONFIG_HEVC_QSV_DECODER
+AVHWAccel ff_hevc_qsv_hwaccel = {
+    .name           = "hevc_qsv",
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_HEVC,
+    .pix_fmt        = AV_PIX_FMT_QSV,
+};
+
+static const AVOption hevc_options[] = {
+    { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = ASYNC_DEPTH_DEFAULT }, 0, INT_MAX, VD },
+
+    { "load_plugin", "A user plugin to load in an internal session", OFFSET(load_plugin), AV_OPT_TYPE_INT, { .i64 = LOAD_PLUGIN_HEVC_SW }, LOAD_PLUGIN_NONE, LOAD_PLUGIN_HEVC_SW, VD, "load_plugin" },
+    { "none",     NULL, 0, AV_OPT_TYPE_CONST, { .i64 = LOAD_PLUGIN_NONE },    0, 0, VD, "load_plugin" },
+    { "hevc_sw",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = LOAD_PLUGIN_HEVC_SW }, 0, 0, VD, "load_plugin" },
+
+    { "load_plugins", "A :-separate list of hexadecimal plugin UIDs to load in an internal session",
+        OFFSET(qsv.load_plugins), AV_OPT_TYPE_STRING, { .str = "" }, 0, 0, VD },
+    { NULL },
+};
+
+static const AVClass hevc_class = {
+    .class_name = "hevc_qsv",
+    .item_name  = av_default_item_name,
+    .option     = hevc_options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
+
+AVCodec ff_hevc_qsv_decoder = {
+    .name           = "hevc_qsv",
+    .long_name      = NULL_IF_CONFIG_SMALL("HEVC (Intel Quick Sync Video acceleration)"),
+    .priv_data_size = sizeof(QSVH2645Context),
+    .type           = AVMEDIA_TYPE_VIDEO,
+    .id             = AV_CODEC_ID_HEVC,
+    .init           = qsv_decode_init,
+    .decode         = qsv_decode_frame,
+    .flush          = qsv_decode_flush,
+    .close          = qsv_decode_close,
+    .capabilities   = CODEC_CAP_DELAY | CODEC_CAP_DR1,
+    .priv_class     = &hevc_class,
+};
+#endif
+
+#if CONFIG_H264_QSV_DECODER
 AVHWAccel ff_h264_qsv_hwaccel = {
     .name           = "h264_qsv",
     .type           = AVMEDIA_TYPE_VIDEO,
@@ -285,8 +254,6 @@ AVHWAccel ff_h264_qsv_hwaccel = {
     .pix_fmt        = AV_PIX_FMT_QSV,
 };
 
-#define OFFSET(x) offsetof(QSVH264Context, x)
-#define VD AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM
 static const AVOption options[] = {
     { "async_depth", "Internal parallelization depth, the higher the value the higher the latency.", OFFSET(qsv.async_depth), AV_OPT_TYPE_INT, { .i64 = ASYNC_DEPTH_DEFAULT }, 0, INT_MAX, VD },
     { NULL },
@@ -302,13 +269,14 @@ static const AVClass class = {
 AVCodec ff_h264_qsv_decoder = {
     .name           = "h264_qsv",
     .long_name      = NULL_IF_CONFIG_SMALL("H.264 / AVC / MPEG-4 AVC / MPEG-4 part 10 (Intel Quick Sync Video acceleration)"),
-    .priv_data_size = sizeof(QSVH264Context),
+    .priv_data_size = sizeof(QSVH2645Context),
     .type           = AVMEDIA_TYPE_VIDEO,
     .id             = AV_CODEC_ID_H264,
     .init           = qsv_decode_init,
     .decode         = qsv_decode_frame,
     .flush          = qsv_decode_flush,
     .close          = qsv_decode_close,
-    .capabilities   = CODEC_CAP_DELAY,
+    .capabilities   = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_DR1,
     .priv_class     = &class,
 };
+#endif

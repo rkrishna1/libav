@@ -853,7 +853,7 @@ static int wma_decode_superframe(AVCodecContext *avctx, void *data,
             }
             if (len > 0)
                 *q++ = (get_bits) (&s->gb, len) << (8 - len);
-            memset(q, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+            memset(q, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 
             /* XXX: bit_offset bits into last frame */
             init_get_bits(&s->gb, s->last_superframe,
@@ -936,7 +936,7 @@ AVCodec ff_wmav1_decoder = {
     .close          = ff_wma_end,
     .decode         = wma_decode_superframe,
     .flush          = flush,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
 };
@@ -951,7 +951,7 @@ AVCodec ff_wmav2_decoder = {
     .close          = ff_wma_end,
     .decode         = wma_decode_superframe,
     .flush          = flush,
-    .capabilities   = CODEC_CAP_DR1,
+    .capabilities   = AV_CODEC_CAP_DR1,
     .sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                       AV_SAMPLE_FMT_NONE },
 };

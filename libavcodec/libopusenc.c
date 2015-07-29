@@ -262,7 +262,7 @@ static int av_cold libopus_encode_init(AVCodecContext *avctx)
     }
 
     header_size = 19 + (avctx->channels > 2 ? 2 + avctx->channels : 0);
-    avctx->extradata = av_malloc(header_size + FF_INPUT_BUFFER_PADDING_SIZE);
+    avctx->extradata = av_malloc(header_size + AV_INPUT_BUFFER_PADDING_SIZE);
     if (!avctx->extradata) {
         av_log(avctx, AV_LOG_ERROR, "Failed to allocate extradata.\n");
         ret = AVERROR(ENOMEM);
@@ -413,7 +413,7 @@ AVCodec ff_libopus_encoder = {
     .init            = libopus_encode_init,
     .encode2         = libopus_encode,
     .close           = libopus_encode_close,
-    .capabilities    = CODEC_CAP_DELAY | CODEC_CAP_SMALL_LAST_FRAME,
+    .capabilities    = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_SMALL_LAST_FRAME,
     .sample_fmts     = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
                                                       AV_SAMPLE_FMT_FLT,
                                                       AV_SAMPLE_FMT_NONE },

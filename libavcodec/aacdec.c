@@ -1063,7 +1063,7 @@ static av_cold int aac_decode_init(AVCodecContext *avctx)
 
     ff_aac_sbr_init();
 
-    avpriv_float_dsp_init(&ac->fdsp, avctx->flags & CODEC_FLAG_BITEXACT);
+    avpriv_float_dsp_init(&ac->fdsp, avctx->flags & AV_CODEC_FLAG_BITEXACT);
 
     ac->random_state = 0x1f2e3d4c;
 
@@ -2969,7 +2969,7 @@ static int aac_decode_frame(AVCodecContext *avctx, void *data,
     if (new_extradata) {
         av_free(avctx->extradata);
         avctx->extradata = av_mallocz(new_extradata_size +
-                                      FF_INPUT_BUFFER_PADDING_SIZE);
+                                      AV_INPUT_BUFFER_PADDING_SIZE);
         if (!avctx->extradata)
             return AVERROR(ENOMEM);
         avctx->extradata_size = new_extradata_size;
@@ -3089,14 +3089,14 @@ static int latm_decode_audio_specific_config(struct LATMContext *latmctx,
 
         if (avctx->extradata_size < esize) {
             av_free(avctx->extradata);
-            avctx->extradata = av_malloc(esize + FF_INPUT_BUFFER_PADDING_SIZE);
+            avctx->extradata = av_malloc(esize + AV_INPUT_BUFFER_PADDING_SIZE);
             if (!avctx->extradata)
                 return AVERROR(ENOMEM);
         }
 
         avctx->extradata_size = esize;
         memcpy(avctx->extradata, gb->buffer + (config_start_bit/8), esize);
-        memset(avctx->extradata+esize, 0, FF_INPUT_BUFFER_PADDING_SIZE);
+        memset(avctx->extradata+esize, 0, AV_INPUT_BUFFER_PADDING_SIZE);
     }
     skip_bits_long(gb, bits_consumed);
 
@@ -3318,7 +3318,7 @@ AVCodec ff_aac_decoder = {
     .sample_fmts     = (const enum AVSampleFormat[]) {
         AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE
     },
-    .capabilities    = CODEC_CAP_CHANNEL_CONF | CODEC_CAP_DR1,
+    .capabilities    = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .channel_layouts = aac_channel_layout,
 };
 
@@ -3339,6 +3339,6 @@ AVCodec ff_aac_latm_decoder = {
     .sample_fmts     = (const enum AVSampleFormat[]) {
         AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE
     },
-    .capabilities    = CODEC_CAP_CHANNEL_CONF | CODEC_CAP_DR1,
+    .capabilities    = AV_CODEC_CAP_CHANNEL_CONF | AV_CODEC_CAP_DR1,
     .channel_layouts = aac_channel_layout,
 };
